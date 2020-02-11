@@ -1,0 +1,192 @@
+---
+title: "Secondary Endpoint - Time to event"
+author: "James Totterdell"
+date: "04/12/2019"
+output: 
+  bookdown::pdf_document2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+
+library(tidyverse)
+library(magrittr)
+library(grid)
+library(gridExtra)
+```
+
+This document outlines the approach for the secondary time-to-event endpoint in AuTOMATIC.
+
+# Details
+
+Randomisation occurs 28 days prior to the scheduled due date of vaccination. We denote this as $t=1$, which corresponds to the interval $[0, 1)$. The scheduled due date is then $t=29$, corresponding to $[28,29)$. The interventions may be applied 14 days before due date, on the due date, or 7 days after the due date. That is $t=15$, $t=29$, or $t=36$.
+
+We observe the time between randomisation to date of vaccination in days. Right-censoring occurs for all participants 90 days after their scheduled due date, that is $t=119$. Right-censoring may also occur earlier if the participant receives a subsequent intervention (e.g. say a reminder for their 6 month vaccine prior to receiving their 4 month vaccine). So, at the time $t$, the participant may have experienced the event $y=1$ or be censored $y=0$.
+
+For discrete time values, $t\in\{1,...,k\}$ with probability $f(t) = \mathbb P[T=t]$, the hazard is defined as
+$$
+\lambda(t|x) = \mathbb P[T = t | T\geq t,x],\ t=1,...,k
+$$
+with corresponding survival
+$$
+S(t|x) = \mathbb P[T>t|x] = \prod_{s=1}^t (1 - \lambda(s|x)),\ t=1,...,k
+$$
+which denotes the probability that the event occurs later than time $t$, that is, probability of surviving $[a_{t-1}, a_t)$. The probability of an event at $t$ is then
+$$
+f(t|x) = \lambda(t|x)S(t-1|x)
+$$
+the probability of no event prior to the $t$th interval and an event in the $t$th interval.
+
+Essentially, the hazard models a binary response that, conditional on $T\geq t$, either the event occurs at $t$ or it does not (i.e. it occurs at some other time $t+1,...,k$). Therefore, we model
+$$
+\lambda(t|x) = h(\gamma_t + x^\top\beta)
+$$
+for some monotone increasing link function $h(\cdot)$.
+
+Standard choices are $h(\eta)=\text{expit}(\eta)=\text{logit}^{-1}(\eta)$ which implies (conditional odds)
+$$
+\psi(t) =\frac{\mathbb P[T=t|x]}{\mathbb P[T>t|x]} = \frac{f(t|x)}{S(t|x)} = \exp(\gamma_t + x^\top\beta)
+$$
+which implies (continuation ratio)
+$$
+\frac{\psi(t|x)}{\psi(t|\tilde x)} = \exp((x - \tilde x)^\top\beta)
+$$
+or $h(\eta) = 1 - \exp(-\exp(\eta))$ which implies (proportional log survival)
+$$
+\frac{\ln S(t|x)}{\ln S(t|\tilde x)} = \exp((x - \tilde x)^\top\beta).
+$$
+
+The following just uses the logistic link function.
+
+The fully-specified linear predictor for a participant $i$ allows the covariate to be time dependent, $x_{it}$. Additionally, we allow the same intervention to have different effect depending on the timing. For example, message framing 1 may have a different effect on the hazard if given at $t=29$ versus $t=15$, say. The design therefore consists of three key variables. The value $a\in\{1,2,3,4\}$ flags the message framing, $b\in\{1,2,3\}$ flags the timing, and $w\in\{0,1\}$ indicates if the intervention is or is not active, which is determined according to the value of $t$ and which $b$ the participant received. This implies that there are 12 parameters $\beta$ in addition to the baseline hazard $\gamma_t$. At all time points, participants in the control group only contribute to the basline hazard. For all other participants, they contribute to the baseline hazard only until the intervention is applied ($w=1$) at which point they inform the relevant $\beta$.
+
+We expect few participants to be vaccinated prior to their due date. On and after the due date, we may expect a spike in vaccinations for a few weeks which gradually trails off. Under the specification above, each time point $t$ has it's own baseline $\gamma_t$. However, due to the large number of time-points, some of these may have very little information. A better approach is to smooth the $\gamma_t$ parameters. This could be via a random-walk prior or P-splines.
+
+The $\gamma_t$ parameters can be smoothed across time points by including them as a penalised spline term on time, for exmaple $\gamma_t = f(t)$ where
+$$
+\begin{aligned}
+f(t) &= \sum_{m=1}^p \delta_mB_m(t) \\
+\delta|\sigma^2 &\sim \text{RW}(1;\sigma^2) \\
+\sigma^2 &\sim \text{IG}(0.25, 0.1).
+\end{aligned}
+$$
+
+One issue with this specification is that it is somewhat inflexible, in that the hazard profile for all framings and timings follows the same pattern, changing only by some multiplicative factor. Additional flexibility could be incorporated by allowing the effects, $\beta$, to be time-varying so that different profiles are allowed for different combinations of framing and timing. This would be reasonably straightforward by just letting the intervention effects to vary the B-spline parameters used to handle the baseline hazard. Problem is this increases complexity of interpretation; we would probably just have to plot the various profiles, or summarise in terms of mean/median time to vaccination etc.
+
+The above handles the index vaccinations. We would also like to analyse all vaccinations for all children of each randomised parent. The most straightforward way is to extend the linear predictor to include the appropriate multi-level design $Z\alpha$ for design matrix Z.
+
+\clearpage
+
+# Example
+
+The following R code simulates some data according to a complex baseline hazard shape with sharp jumps and declines. Recall that all the $a$ (framings) are assumed to have the same effect, but this effect varies depending on timing, $b$, 0.75, 0.5, 0.25.
+
+```{r}
+N <- 4800
+K <- 119
+ID <- 1:N
+Data <- data.frame(ID)
+b <- rep(1:3, each = N/3)
+a <- rep(1:4, times = N/4)
+Data <- cbind(Data, a, b, i = 1)
+
+# Person-period
+expand <- function(x, t) {
+  data <- x[rep(1:length(x[,1]), each = t), ]
+  rownames(data) <- NULL
+  return(data)
+}
+Data <- expand(Data, K)
+Data <- rbind(Data, expand.grid(ID = (N+1):(N+400), a = 1, b = 1, i = 0)[rep(1:400, each = K), ])
+Data$period <- rep(1:K, N + 400)
+Data$w1 <- with(Data, ifelse(b == 1 & i == 1 & period >= 15, 1, 0))
+Data$w2 <- with(Data, ifelse(b == 2 & i == 1 & period >= 29, 1, 0))
+Data$w3 <- with(Data, ifelse(b == 3 & i == 1 & period >= 36, 1, 0))
+Data$w <- as.numeric(with(Data, w1 | w2 | w3))
+
+# Linear predictor
+Data$haz <- plogis(-5.5 +
+                    # 0.5*sin(pi*Data$period/26) +
+                    3.5*dnorm(Data$period, 30, 2) +
+                    2.5*(Data$period >= 29 & Data$period < 43) + 
+                    0.75*Data$w1 + 0.5*Data$w2 + 0.25*Data$w3)
+Data %<>% group_by(ID) %>% mutate(haz = if_else(row_number() == n(), 1, haz))
+# Marginal probability
+Data %<>% 
+  group_by(ID) %>%
+  mutate(surv = cumprod(1 - haz),
+         p = haz * lag(surv, default = 1),
+         y = rmultinom(1, 1, p))
+Data %<>% filter(period < K)
+# Event times
+Data_events <- Data %>%
+  group_by(ID) %>%
+  filter(period == min(c(which(y == 1), K - 1))) %>%
+  ungroup() %>%
+  select(-w1, -w2, -w3)
+# Data set
+Data_final <- Data %>%
+  group_by(ID) %>%
+  filter(period <= min(c(which(y == 1), K - 1))) %>%
+  ungroup() %>%
+  select(-w1, -w2, -w3)
+# Aggregated data set
+Data_agg <- Data_final %>%
+  group_by(period, a, b, w, i) %>%
+  summarise(n = n(), y = sum(y))
+# Assumed curves
+par(mfrow = c(3, 1))
+plot(Data %>% filter(ID == 1) %>% pull(haz), type = "l", ylab = "Hazard", xlab = "Time")
+plot(Data %>% filter(ID == 1) %>% pull(surv), type = "l", ylab = "Survival", xlab = "Time")
+plot(Data %>% filter(ID == 1) %>% pull(p), type = "l", ylab = "Probability of event", xlab = "Time")
+```
+
+The above would be implemented in Stan, but just for quick examples sake, the parameters are estimated using `mgcv::gam`.
+
+```{r, fig.cap="Estimated mean survival profiles, baseline is black line.", fig.height=7}
+library(rstanarm)
+library(bayestestR)
+library(matrixStats)
+library(mgcv)
+
+options(contrasts=c('contr.bayes', 'contr.bayes'))
+
+m <- gam(cbind(y, n - y) ~ s(period, bs = "ps", k = 50) + factor(a):factor(b):w, 
+         data = Data_agg, family = binomial())
+summary(m)
+
+Data_agg$linpred <- predict(m)
+Data_agg %<>% group_by(a,b,i) %>% 
+  mutate(haz = plogis(linpred),
+         surv = cumprod(1 - haz),
+         p = haz * lag(surv, default = 1))
+Data_null <- expand.grid(period = 1:K, a = 1, b = 1, w = 0, i= 0)
+Data_null$linpred <- predict(m, newdata = Data_null)
+Data_null %<>% group_by(a,b) %>% 
+  mutate(haz = plogis(linpred),
+         surv = cumprod(1 - haz),
+         p = haz * lag(surv, default = 1))
+
+p1 <- ggplot(Data_agg %>% filter(i == 1), aes(period, haz, 
+                     colour = factor(b), linetype = factor(a))) +
+  geom_line() +
+  geom_line(data = Data_null, colour = "black") +
+  xlim(0, 60) +
+  ylab("Hazard") +
+  theme_bw()
+
+p2 <- ggplot(Data_agg %>% filter(i == 1), aes(period, surv, 
+                     colour = factor(b), linetype = factor(a))) +
+  geom_line() +
+  geom_line(data = Data_null, colour = "black") +
+  xlim(0, 60) +
+  ylab("Probability unvaccinated") +
+  theme_bw()
+
+grid.arrange(p1, p2, ncol = 1)
+```
+

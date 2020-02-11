@@ -1,0 +1,970 @@
+---
+title: "Trial Simulations"
+subtitle: "AuTOMATIC: Adaptive Trial of MessAging to improve Immunisation Coverage"
+author: "James Totterdell"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  bookdown::pdf_document2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE,
+	fig.pos = "ht",
+	fig.align = "center"
+)
+knitr::opts_knit$set(
+  root.dir = ".."
+)
+
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(tidyr)
+library(forcats)
+library(stringr)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(gtable)
+library(directlabels)
+library(automaticsims)
+
+options(knitr.kable.NA = '')
+options(knitr.table.format = "latex")
+
+theme_set(
+  theme_bw(base_size = 10) +
+  theme(panel.grid.minor = element_blank(),
+        legend.title = element_text(size = rel(0.9))))
+
+add_facet_labs <- function(p, labelT = "", labelR = "") {
+   g <- ggplotGrob(p)
+  # Get the positions of the strips in the gtable: t = top, l = left, ...
+  posR <- subset(g$layout, grepl("strip-r", name), select = t:r)
+  posT <- subset(g$layout, grepl("strip-t", name), select = t:r)
+  # Add a new column to the right of current right strips, 
+  # and a new row on top of current top strips
+  if(nrow(posR) > 0)
+    width <- g$widths[max(posR$r)]    # width of current right strips
+  if(nrow(posT) > 0)
+    height <- g$heights[min(posT$t)]  # height of current top strips
+  if(nrow(posR) > 0)
+    g <- gtable_add_cols(g, width, max(posR$r))  
+  if(nrow(posT) > 0)
+    g <- gtable_add_rows(g, height, min(posT$t)-1)
+  
+  # Construct the new strip grobs
+  if(nrow(posR) > 0) {
+    stripR <- gTree(name = "Strip_right", children = gList(
+     rectGrob(gp = gpar(col = "black", fill = "grey90")),
+     textGrob(labelR, rot = -90, gp = gpar(fontsize = 8, fontface = 'bold', col = "grey10"))))
+  }
+  if(nrow(posT) > 0) {
+    stripT <- gTree(name = "Strip_top", children = gList(
+     rectGrob(gp = gpar(col = "black", fill = "grey90")),
+     textGrob(labelT, gp = gpar(fontsize = 8, fontface = 'bold', col = "grey10"))))
+  }
+  
+  # Position the grobs in the gtable
+  if(nrow(posR) > 0) {
+    g <- gtable_add_grob(g, stripR, t = min(posR$t)+1, 
+                       l = max(posR$r) + 1, b = max(posR$b)+1, name = "strip-right")
+  }
+  if(nrow(posT) > 0) {
+    g <- gtable_add_grob(g, stripT, t = min(posT$t), 
+                       l = min(posT$l), r = max(posT$r), name = "strip-top")
+  }
+  
+  # Add small gaps between strips
+  if(nrow(posR) > 0)
+    g <- gtable_add_cols(g, unit(1/5, "line"), max(posR$r))
+  if(nrow(posT) > 0)
+    g <- gtable_add_rows(g, unit(1/5, "line"), min(posT$t))
+  return(g) 
+}
+```
+
+\vspace*{4\baselineskip}
+
+This document summarises simulation results for the operating characteristics for the AuTOMATIC trial. For details of trial adaptations see the Statistical Analysis Plan (SAP).
+
+In general, the design allows for a first interim analysis at a given sample size and then additional interim analyses every 500 participants meeting the primary endpoint, up to a maximum sample size of 10,000 participants. 
+
+Simulations utilised variational approximations to the model parameter posteriors, and posterior quantities were calculated on the basis of 10,000 draws from this approximation Operating characteristics were based on 10,000 simulations under each scenario. Based on the simulation results, the trial parameters as outlined in this statistical analysis plan were chosen. 
+
+\clearpage
+
+# Example Trials
+
+Example trials are given which stop according to each of the rules defined in the SAP. The parameters used for the example trials are in accordance with `pars = 2` as given in Table \@ref(tab:tpar).
+
+```{r}
+tpar <- c(
+  nfirst = 500,
+  delta_sup = 0.1,
+  kappa_act_0 = 0.01,
+  kappa_sup_0 = 0.85,
+  kappa_sup_1 = 0.75,
+  kappa_noninf_0 = 0.5,
+  kappa_nonsup_0 = 0.05
+)
+kapthres <- automaticsims:::thres_seq(0.85, 0.75, 1/2, 19)
+```
+
+## Intervention Superiority
+
+In this example, arm one is superior to all other arms by an amout 0.5 in the log-odds.
+
+```{r}
+set.seed(11008)
+ex <- run_a_noninf_trial_alt(
+  1, c(1, 1.5, rep(1,11)), 
+  kappa_act_1 = 0.01, kappa_sup_0 = 0.85, kappa_sup_1 = 0.75, 
+  kappa_noninf_0 = 0.5, kappa_noninf_1 = 0.5, 
+  kappa_nonsup_0 = 0.05, kappa_nonsup_1 = 0.05,
+  return_all = T, ind_comp_ctrl = T)
+```
+
+
+```{r, fig.cap = "Stopping criteria relative to thresholds by interim, arms as labelled.", fig.height=3, fig.width=6}
+p1 <- gather(as_tibble(ex$n), "Arm", "Sample size") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Sample size`, colour = Arm)) +
+  geom_line() +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+p2 <- gather(as_tibble(ex$p_max), "Arm", "Prob(max)") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Prob(max)`, colour = Arm)) +
+  geom_line() +
+  geom_line(data = as.data.frame(cbind(t = 1:10, "Prob(max)" = kapthres[1:10])),
+            aes(colour = NULL), linetype=2) +
+  geom_hline(yintercept = 0.01, linetype = 2) +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  xlim(0, 8) +
+  ylim(0, 1) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+p3 <- gather(as_tibble(ex$p_sup_trt), "Arm", "Prob(sup all)") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Prob(sup all)`, colour = Arm)) +
+  geom_line() +
+  geom_hline(yintercept = c(0.05), linetype = 2) +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  xlim(0, 8) +
+  ylim(0, 1) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+p4 <- tibble("Prob(best beats all inactive and control)" = ex$p_best_beat_inactive,
+             "Prob(active noninferior to best)" = ex$p_noninf) %>%
+  gather(key, value) %>%
+  group_by(key) %>%
+  mutate(t = 1:n()) %>%
+  ggplot(., aes(t, value, colour = key)) +
+  geom_line() +
+  geom_hline(yintercept = c(0.5, 0.75), linetype = 2, colour = c("black", "red")) +
+  scale_colour_manual(guide = FALSE, "", values = c("black", "red")) +
+  xlim(0, 8) +
+  ylim(0, 1) +
+  labs(y = "Prob(noninf)/Prob(sup)") +
+  theme(legend.position = "bottom")
+
+p5 <- gather(as_tibble(ex$p_beat_ctrl), "Arm", "Prob(beat ctrl)") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Prob(beat ctrl)`, colour = Arm)) +
+  geom_line() +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = 2) +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  xlim(0, 8) +
+  ylim(0, 1) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+grid.arrange(
+  rbind(cbind(ggplotGrob(p2), ggplotGrob(p3), size = "first"), 
+        cbind(ggplotGrob(p4), ggplotGrob(p5), size = "first")))
+```
+
+
+```{r, fig.cap="Posterior mean and 95\\% highest density interval by interim.", fig.height=3, fig.width=6}
+pdat <- bind_rows(lapply(1:ex$interim,
+       function(i) data.frame(Arm = names(ex$m[i, ]),
+                              Mean = ex$m[i, ],
+                              t = i,
+                              Variance = ex$v[i, ],
+                              Active = c(NA, ex$active[i, ])))) %>%
+  mutate(lo = Mean - 1.96*sqrt(Variance), hi = Mean + 1.96*sqrt(Variance))
+
+ggplot(pdat,
+       aes(Arm, Mean, group = Arm, colour = factor(Active))) +
+  facet_wrap( ~ t) +
+  geom_pointrange(aes(ymin = lo, ymax = hi), size = 0.1) +
+  scale_colour_manual("Active", values = c("1" = "red", "0" = "black"), 
+                      na.value = "grey50") +
+  scale_x_discrete(labels = 0:12) +
+  theme(panel.grid.major = element_blank())
+```
+
+
+\clearpage
+
+## Control Superiority
+
+In this example, arm 0 (control) is superior to all others by an amount 0.5 on the log-odds scale. The trial stops for control superiority at the 8th interim analysis.
+
+```{r}
+set.seed(756102)
+ex <- run_a_noninf_trial_alt(
+  1, c(1.5, 1.15, rep(1,11)), 
+  kappa_act_1 = 0.01, kappa_sup_0 = 0.85, kappa_sup_1 = 0.75, 
+  kappa_noninf_0 = 0.5, kappa_noninf_1 = 0.5, 
+  kappa_nonsup_0 = 0.05, kappa_nonsup_1 = 0.05,
+  return_all = T, ind_comp_ctrl = T)
+```
+
+
+```{r, fig.cap = "Stopping criteria relative to thresholds by interim, arms as labelled.", fig.height=3, fig.width=6}
+p1 <- gather(as_tibble(ex$n), "Arm", "Sample size") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Sample size`, colour = Arm)) +
+  geom_line() +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+p2 <- gather(as_tibble(ex$p_max), "Arm", "Prob(max)") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Prob(max)`, colour = Arm)) +
+  geom_line() +
+  geom_line(data = as.data.frame(cbind(t = 1:10, "Prob(max)" = kapthres[1:10])),linetype=2,
+            aes(colour = NULL)) +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2), limits = c(0, 10), breaks = seq(0, 10, 2)) +
+  ylim(0, 1) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+p3 <- gather(as_tibble(ex$p_sup_trt), "Arm", "Prob(sup all)") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Prob(sup all)`, colour = Arm)) +
+  geom_line() +
+  geom_hline(yintercept = c(0.05), linetype = 2) +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2), limits = c(0, 10), breaks = seq(0, 10, 2)) +
+  ylim(0, 1) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+p4 <- tibble("Prob(best beats all inactive and control)" = ex$p_best_beat_inactive,
+             "Prob(active noninferior to best)" = ex$p_noninf) %>%
+  gather(key, value) %>%
+  group_by(key) %>%
+  mutate(t = 1:n()) %>%
+  ggplot(., aes(t, value, colour = key)) +
+  geom_line() +
+  geom_hline(yintercept = c(0.5, 0.75), linetype = 2, colour = c("black", "red")) +
+  scale_colour_manual(guide = FALSE, "", values = c("black", "red")) +
+  scale_x_continuous(expand = c(0, 2), limits = c(0, 10), breaks = seq(0, 10, 2)) +
+  ylim(0, 1) +
+  labs(y = "Prob(noninf)/Prob(sup)") +
+  theme(legend.position = "bottom")
+
+p5 <- gather(as_tibble(ex$p_beat_ctrl), "Arm", "Prob(beat ctrl)") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Prob(beat ctrl)`, colour = Arm)) +
+  geom_line() +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = 2) +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2), limits = c(0, 10), breaks = seq(0, 10, 2)) +
+  ylim(0, 1) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+grid.arrange(
+  rbind(cbind(ggplotGrob(p2), ggplotGrob(p3), size = "first"), 
+        cbind(ggplotGrob(p4), ggplotGrob(p5), size = "first")))
+```
+
+
+```{r, fig.cap="Posterior mean and 95\\% highest density interval by interim.", fig.height=3, fig.width=6}
+pdat <- bind_rows(lapply(1:ex$interim,
+       function(i) data.frame(Arm = names(ex$m[i, ]),
+                              Mean = ex$m[i, ],
+                              t = i,
+                              Variance = ex$v[i, ],
+                              Active = c(NA, ex$active[i, ])))) %>%
+  mutate(lo = Mean - 1.96*sqrt(Variance), hi = Mean + 1.96*sqrt(Variance))
+
+ggplot(pdat,
+       aes(Arm, Mean, group = Arm, colour = factor(Active))) +
+  facet_wrap( ~ t) +
+  geom_pointrange(aes(ymin = lo, ymax = hi), size = 0.1) +
+  scale_colour_manual("Active", values = c("1" = "red", "0" = "black"), na.value = "grey50") +
+  scale_x_discrete(labels = 0:12) +
+  theme(panel.grid.major = element_blank())
+```
+
+\clearpage
+
+## Non-superiority
+
+In this example, all itervention arms are equally superior to control by an amount 0.25 on log-odds scale. The trial stops for non-superiority at the 18th interim analysis.
+
+```{r}
+set.seed(129187)
+ex <- run_a_noninf_trial_alt(
+  1, c(1, rep(1.25, 12)), 
+  kappa_act_1 = 0.01, kappa_sup_0 = 0.85, kappa_sup_1 = 0.75, 
+  kappa_noninf_0 = 0.5, kappa_noninf_1 = 0.5, 
+  kappa_nonsup_0 = 0.05, kappa_nonsup_1 = 0.05,
+  return_all = T, ind_comp_ctrl = T)
+```
+
+
+```{r, fig.cap = "Stopping criteria relative to thresholds by interim, arms as labelled.", fig.width=6, fig.height=3}
+p1 <- gather(as_tibble(ex$n), "Arm", "Sample size") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Sample size`, colour = Arm)) +
+  geom_line() +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+p2 <- gather(as_tibble(ex$p_max), "Arm", "Prob(max)") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Prob(max)`, colour = Arm)) +
+  geom_line() +
+  geom_line(data = as.data.frame(cbind(t = 1:20, "Prob(max)" = kapthres[1:20])),linetype=2,
+            aes(colour = NULL)) +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  xlim(0, 20) +
+  ylim(0, 1) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+p3 <- gather(as_tibble(ex$p_sup_trt), "Arm", "Prob(sup all)") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Prob(sup all)`, colour = Arm)) +
+  geom_line() +
+  geom_hline(yintercept = c(0.05), linetype = 2) +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  xlim(0, 20) +
+  ylim(0, 1) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+p4 <- tibble("Prob(best beats all inactive and control)" = ex$p_best_beat_inactive,
+             "Prob(active noninferior to best)" = ex$p_noninf) %>%
+  gather(key, value) %>%
+  group_by(key) %>%
+  mutate(t = 1:n()) %>%
+  ggplot(., aes(t, value, colour = key)) +
+  geom_line() +
+  geom_hline(yintercept = c(0.5, 0.75), linetype = 2, colour = c("black", "red")) +
+  scale_colour_manual(guide = FALSE, "", values = c("black", "red")) +
+  xlim(0, 20) +
+  ylim(0, 1) +
+  labs(y = "Prob(noninf)/Prob(sup)") +
+  theme(legend.position = "bottom")
+
+p5 <- gather(as_tibble(ex$p_beat_ctrl), "Arm", "Prob(beat ctrl)") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Prob(beat ctrl)`, colour = Arm)) +
+  geom_line() +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = 2) +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  xlim(0, 20) +
+  ylim(0, 1) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+grid.arrange(
+  rbind(cbind(ggplotGrob(p2), ggplotGrob(p3), size = "first"), 
+        cbind(ggplotGrob(p4), ggplotGrob(p5), size = "first")))
+```
+
+
+```{r, fig.cap="Posterior mean and 95\\% highest density interval by interim.", fig.height=3, fig.width=6}
+pdat <- bind_rows(lapply(1:ex$interim,
+       function(i) data.frame(Arm = names(ex$m[i, ]),
+                              Mean = ex$m[i, ],
+                              t = i,
+                              Variance = ex$v[i, ],
+                              Active = c(NA, ex$active[i, ])))) %>%
+  mutate(lo = Mean - 1.96*sqrt(Variance), hi = Mean + 1.96*sqrt(Variance))
+
+ggplot(pdat,
+       aes(Arm, Mean, group = Arm, colour = factor(Active))) +
+  facet_wrap( ~ t) +
+  geom_pointrange(aes(ymin = lo, ymax = hi), size = 0.1) +
+  scale_colour_manual("Active", values = c("1" = "red", "0" = "black"), na.value = "grey50") +
+  scale_x_discrete(labels = 0:12) +
+  theme(panel.grid.major = element_blank())
+```
+
+\clearpage
+
+## Non-inferiority
+
+In this example, arms 1 and 2 are superior to all others by an equal amount 0.5 on the log-odds scale. The trial stops for non-inferiority of two arms at teh 6th interim analysis.
+
+```{r}
+set.seed(201938)
+ex <- run_a_noninf_trial_alt(
+  1, c(1, 1.5, 1.5, rep(1,10)), 
+  kappa_act_1 = 0.01, kappa_sup_0 = 0.85, kappa_sup_1 = 0.75, 
+  kappa_noninf_0 = 0.5, kappa_noninf_1 = 0.5, 
+  kappa_nonsup_0 = 0.05, kappa_nonsup_1 = 0.05,
+  return_all = T, ind_comp_ctrl = T)
+```
+
+
+```{r, fig.cap = "Stopping criteria relative to thresholds by interim, arms as labelled.", fig.height=3, fig.width=6}
+p1 <- gather(as_tibble(ex$n), "Arm", "Sample size") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Sample size`, colour = Arm)) +
+  geom_line() +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+p2 <- gather(as_tibble(ex$p_max), "Arm", "Prob(max)") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Prob(max)`, colour = Arm)) +
+  geom_line() +
+  geom_line(data = as.data.frame(cbind(t = 1:10, "Prob(max)" = kapthres[1:10])),linetype=2,
+            aes(colour = NULL)) +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  xlim(0, 8) +
+  ylim(0, 1) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+p3 <- gather(as_tibble(ex$p_sup_trt), "Arm", "Prob(sup all)") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Prob(sup all)`, colour = Arm)) +
+  geom_line() +
+  geom_hline(yintercept = c(0.05), linetype = 2) +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  xlim(0, 8) +
+  ylim(0, 1) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+p4 <- tibble("Prob(best beats all inactive and control)" = ex$p_best_beat_inactive,
+             "Prob(active noninferior to best)" = ex$p_noninf) %>%
+  gather(key, value) %>%
+  group_by(key) %>%
+  mutate(t = 1:n()) %>%
+  ggplot(., aes(t, value, colour = key)) +
+  geom_line() +
+  geom_hline(yintercept = c(0.5, 0.75), linetype = 2, colour = c("black", "red")) +
+  scale_colour_manual(guide = FALSE, "", values = c("black", "red")) +
+  xlim(0, 8) +
+  ylim(0, 1) +
+  labs(y = "Prob(noninf)/Prob(sup)") +
+  theme(legend.position = "bottom")
+
+p5 <- gather(as_tibble(ex$p_beat_ctrl), "Arm", "Prob(beat ctrl)") %>%
+  group_by(Arm) %>% mutate(t = 1:n()) %>%
+  ggplot(., aes(t, `Prob(beat ctrl)`, colour = Arm)) +
+  geom_line() +
+  geom_hline(yintercept = c(0.05, 0.95), linetype = 2) +
+  scale_colour_viridis_d(guide = 'none', option = "B") +
+  scale_x_continuous(expand = c(0, 2)) +
+  xlim(0, 8) +
+  ylim(0, 1) +
+  geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
+
+grid.arrange(
+  rbind(cbind(ggplotGrob(p2), ggplotGrob(p3), size = "first"), 
+        cbind(ggplotGrob(p4), ggplotGrob(p5), size = "first")))
+```
+
+
+```{r, fig.cap="Posterior mean and 95\\% highest density interval, by interim.", fig.height=3, fig.width=6}
+pdat <- bind_rows(lapply(1:ex$interim,
+       function(i) data.frame(Arm = names(ex$m[i, ]),
+                              Mean = ex$m[i, ],
+                              t = i,
+                              Variance = ex$v[i, ],
+                              Active = c(NA, ex$active[i, ])))) %>%
+  mutate(lo = Mean - 1.96*sqrt(Variance), hi = Mean + 1.96*sqrt(Variance))
+
+ggplot(pdat,
+       aes(Arm, Mean, group = Arm, colour = factor(Active))) +
+  facet_wrap( ~ t) +
+  geom_pointrange(aes(ymin = lo, ymax = hi), size = 0.1) +
+  scale_colour_manual("Active", values = c("1" = "red", "0" = "black"), na.value = "grey50") +
+  scale_x_discrete(labels = 0:12) +
+  theme(panel.grid.major = element_blank())
+```
+
+\clearpage
+
+# Scenarios
+
+## Trial Design Parameters
+
+Previous simulations explored the effect of varying the non-superiority/non-inferiority reference value $\Delta$ and decided $\Delta=0.1$ to be adequate.
+
+## Effect sizes
+
+* None superior (null scenario)
+* Control superior (arm 0), all others equal.
+* One superior (arm 1), all others equal
+* Two equally superior (arms 1,2), all others equal
+* Three equally superior (arms 1,2,3; one content superior), all others equal
+* Four equally superior (arms 1, 4, 7, 10; one timing superior), all others equal
+* Six equally superior (arms 1,2,3,4,5,6; two contents equally superior), all others equal
+* Twelve equally superior (all interventions equally superior to control)
+
+In null scenario, we considered $\mu_0=0$ and $\mu_0=1$ for all cell means. In the superiority scenarios, we considered effect sizes of 0.1, 0.25, and 0.5 on the log-odds scale from a baseline log-odds of $\mu_0=1$.
+
+The trial design parameters considered are given in \@ref(tab:tpar). The values relate to:
+
+* pars - ID for trial parameters
+* nfirst - Sample size at first interim
+* delta_sup - Reference value for non-superiority
+* kappa_act_0 - Threshold for arm to remain active (constant)
+* kappa_sup_0 - Starting threshold for superiority decision
+* kappa_sup_1 - Ending threshold for superiority decision
+* kappa_noninf_0 - Threshold for noninferirity decision (constant)
+* kappa_nonsup_0 - Threshold for nonsuperiority decision for each arm (constant)
+
+
+```{r tpar}
+res1 <- readRDS("out/nonsuperiority/final_mu_one_sup1.rds")
+res1 %>% 
+  rename(nfirst = n_first) %>%
+  select(pars, nfirst,  delta_sup, kappa_act_0, kappa_sup_0, kappa_sup_1,
+         kappa_noninf_0, kappa_nonsup_0) %>%
+  unique() %>%
+  kable(
+    align = 'r',
+    caption = "Trial design parameters explored.", 
+    digits = c(0,0,1,2,2,2,2,2), booktabs = T,
+    linesep = "") %>%
+  kable_styling(font_size = 8, latex_options = "hold_position")
+```
+
+\clearpage
+
+# Results
+
+```{r, eval = FALSE}
+resctr <- bind_rows(
+  readRDS("out/nonsuperiority/final_mu_ctr_sup1.rds"), 
+  readRDS("out/nonsuperiority/final_mu_ctr_sup2.rds"),
+  readRDS("out/nonsuperiority/final_mu_ctr_sup3.rds")) %>%
+  mutate(pars = fct_inorder(pars), sup = -1)  %>%
+  rename(nfirst = n_first)
+res0 <- bind_rows(
+  readRDS("out/nonsuperiority/final_mu_none_sup1.rds"), 
+  readRDS("out/nonsuperiority/final_mu_none_sup2.rds")) %>%
+  mutate(pars = fct_inorder(pars), sup = 0)  %>%
+  rename(nfirst = n_first)
+res1 <- bind_rows(
+  readRDS("out/nonsuperiority/final_mu_one_sup1.rds"), 
+  readRDS("out/nonsuperiority/final_mu_one_sup2.rds"),
+  readRDS("out/nonsuperiority/final_mu_one_sup3.rds")) %>%
+  mutate(pars = fct_inorder(pars), sup = 1)  %>%
+  rename(nfirst = n_first)
+res2 <- bind_rows(
+  readRDS("out/nonsuperiority/final_mu_two_sup1.rds"), 
+  readRDS("out/nonsuperiority/final_mu_two_sup2.rds"),
+  readRDS("out/nonsuperiority/final_mu_two_sup3.rds")) %>%
+  mutate(pars = fct_inorder(pars), sup = 2)  %>%
+  rename(nfirst = n_first)
+res3 <- bind_rows(
+  readRDS("out/nonsuperiority/final_mu_three_sup1.rds"), 
+  readRDS("out/nonsuperiority/final_mu_three_sup2.rds"),
+  readRDS("out/nonsuperiority/final_mu_three_sup3.rds")) %>%
+  mutate(pars = fct_inorder(pars), sup = 3)  %>%
+  rename(nfirst = n_first)
+res4 <- bind_rows(
+  readRDS("out/nonsuperiority/final_mu_four_sup1.rds"), 
+  readRDS("out/nonsuperiority/final_mu_four_sup2.rds"),
+  readRDS("out/nonsuperiority/final_mu_four_sup3.rds")) %>%
+  mutate(pars = fct_inorder(pars), sup = 4)  %>%
+  rename(nfirst = n_first)
+res6 <- bind_rows(
+  readRDS("out/nonsuperiority/final_mu_six_sup1.rds"), 
+  readRDS("out/nonsuperiority/final_mu_six_sup2.rds"),
+  readRDS("out/nonsuperiority/final_mu_six_sup3.rds")) %>%
+  mutate(pars = fct_inorder(pars), sup = 6)  %>%
+  rename(nfirst = n_first)
+res12 <- bind_rows(
+  readRDS("out/nonsuperiority/final_mu_twelve_sup1.rds"), 
+  readRDS("out/nonsuperiority/final_mu_twelve_sup2.rds"),
+  readRDS("out/nonsuperiority/final_mu_twelve_sup3.rds")) %>%
+  mutate(pars = fct_inorder(pars), sup = 12)  %>%
+  rename(nfirst = n_first)
+
+res <- bind_rows(resctr, res0, res1, res2, res3, res4, res6, res12)
+
+rm(res2, res3, res4, res6, res12)
+
+saveRDS(res, 
+        "out/nonsuperiority/final_all.rds")
+```
+
+
+```{r}
+res <- readRDS("out/nonsuperiority/final_all.rds")
+```
+
+## Trial Results
+
+Stopping results for each set of trial parameters and scenario are given in \@ref(tab:stopping). The columns are as follows
+
+* pars - Indicator for trial parameterisation
+* sup - The number of superior treatments (-1 indicates control superior)
+* nfirst - The sample size at the first interim analysis
+* mu1 - Log-odds of response in control group/inferior intervention groups
+* mu2 - Log-odds of response in superior intervention groups
+* interim - Expected interim at which stopping occurs
+* N - Expected sample size at which stopping occurs
+* stopped - Probability of trial stopping early
+* superior - Probability of resulting in superiority of intervention arm (note this does not assess for correctness of the intervention declared superior)
+* nonsuperior - Probability of resulting in non-superiority of intervention arms
+* noninferior - Probability of resulting in non-inferiority of intervention arms
+* lose - Probability of resulting in superiority of control arm
+* winsup - Probability of resulting in superiority with correct arm superior
+* win - Probability of resulting in superiority or non-inferiority with correct arm superior
+
+In the null scenario we aim to achieve a family-wise false positive rate (stopping for superiority of an intervention arm) of about 0.05 but not lower. Configurations 2 and 7 appeared the most consistent with this aim, however configuration 7 may benefit from a slightly stricter threshold for superiority than that considered.
+
+```{r stopping}
+tab <- res %>%
+  mutate(winsup = superior == 1 & 
+           if_else(sup > 0, 
+            if_else(sup == 4, best %in% c(1,4,7,10), best > 0 & best <= sup), FALSE),
+         win = (superior == 1 | noninferior == 1) & 
+           if_else(sup > 0, 
+            if_else(sup == 4, best %in% c(1,4,7,10), best > 0 & best <= sup), FALSE)) %>%
+  group_by(
+    pars, sup, nfirst, mu1, mu2) %>% 
+  dplyr::select(
+    pars, sup, nfirst,
+    mu1, mu2, interim, N, stopped, superior, nonsuperior, noninferior, lose, winsup, win) %>%
+  summarise_all(mean) %>%
+  ungroup() %>%
+  mutate(nfirst = factor(nfirst), 
+         superior = cell_spec(format(round(superior, 2), nsmall = 2), "latex", 
+                              bold = if_else(superior<0.055&sup==0,T,F)))
+kable(tab,
+    caption = "Stopping characteristics under all scenarios.", 
+    digits = c(0,0,0,2,2,1,0,2,2,2,2,2,2,2), booktabs = T, longtable = T,
+    align = 'r',
+    linesep = "", format.args = list(big.mark = ","), escape = F) %>%
+  kable_styling(full_width = F, 
+                bootstrap_options = "condensed", 
+                latex_options = "repeat_header",
+                font_size = 7) %>%
+  add_header_above(c("Trial Design" = 3, "Means" = 2, "Stopping outcomes" = 9)) %>%
+  row_spec(c(24:46), background = "yellow") %>%
+  landscape()
+```
+
+## Stopping Times
+
+The cumulative probability of trial outcomes across interim sample sizes are given in Figure \@ref(fig:stopfig).
+
+For small effect sizes non-superiority generally leads to early stopping of the trial. For larger effect sizes, non-superiority is less common, but increases with the number of superior treatments. For few superior treatments, stopping is generally due to superiority or non-inferiority in the case of large effect sizes.
+
+In all cases there was a reasonable probability (> 0.5)  of stopping earlier than the maximum sample size.
+
+```{r stopfig, fig.cap="Early stopping by number superior (rows) and effect size (columns) for pars = 2.", fig.width=7, fig.height=7}
+res %>%
+  mutate(mu = pmax(mu1, mu2)) %>%
+  filter(mu %in% c(1, 1.1, 1.25, 1.5),
+         pars == 2,
+         N < 10000, 
+         nonsuperior == 1 | superior == 1 | noninferior == 1 | lose == 1) %>% 
+  group_by(sup, mu, N) %>% 
+  dplyr::summarise(superior = sum(superior), nonsuperior = sum(nonsuperior), 
+                   noninferior = sum(noninferior), stopped = sum(stopped),
+                   lose = sum(lose)) %>%
+  mutate_at(vars(4:8),  ~ cumsum(.) / 10000) %>%
+  gather(key, value, -N, -sup, -mu) %>%
+  mutate(key = factor(key, 
+                      levels = c("superior", "noninferior", "nonsuperior", "lose", "stopped"), labels = c("Superior", "Non-inferior", "Non-superior", "Lose", "Stopped"))) %>%
+  ggplot(., aes(N, value)) +
+  facet_grid(sup ~ mu) +
+  geom_step(aes(group = key, colour = key, linetype = key)) +
+  scale_linetype_manual(values = c("Stopped" = 1, "Superior" = 2, "Non-inferior" = 3, "Non-superior" = 4, "Lose" = 5)) +
+  scale_colour_manual(values = c("Stopped" = 1, "Superior" = 2, "Non-inferior" = 3, "Non-superior" = 4, "Lose" = 5)) +
+  labs(y = "Proportion of trials", x = "Interim sample size", 
+       colour = "Result", linetype = "Result") +
+  ylim(0, 1) +
+  scale_x_continuous(breaks = seq(0, 10000, 1000)) +
+  theme(legend.position = "top", axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+\clearpage
+
+## Parameters and Power at Stopping
+
+Once the trial has stopped, the final analysis will summarise the model parameters and comparisons of interest in terms of point estimates and credible intervals. Figures \@ref(fig:paircell), \@ref(fig:paircon), \@ref(fig:pairtim) summarise the expected power to declare pairwise superiority between cells, content factor levels, and timing factor levels respectively, for various posterior probability thresholds $x$.
+
+Table \@ref(tab:ctrtrt) presents power for $\alpha_1>0$ from the model defined in SAP; the average intervention effect across all message content and timings being greater than zero.
+
+
+```{r ctrtrt}
+res %>%
+  mutate(mu = pmax(mu1,mu2)) %>%
+  filter(pars == 2, mu %in% c(1, 1.25)) %>%
+  group_by(sup, mu1, mu2) %>%
+  dplyr::select(sup, mu1, mu2, starts_with("p_sup_trt_ctr")) %>%
+  summarise_all(list(
+    `x = 0.99` = ~ mean(. > 0.99),
+    `x = 0.95` = ~ mean(. > 0.95), 
+    `x = 0.90` = ~ mean(. > 0.9), 
+    `x = 0.85` = ~ mean(. > 0.85))) %>%
+  ungroup() %>%
+  kable(
+    align = 'r',
+    caption = "Power for average intervention effect > 0, pars = 2.", 
+    digits = c(0,2,2,rep(2,13)), booktabs = T,
+    linesep = "") %>%
+  kable_styling(full_width = F, 
+                bootstrap_options = "condensed", 
+                latex_options = c("hold_position"),
+                font_size = 7) %>%
+  add_header_above(c("Means" = 3, "Prob[Pr(average intervention effect) > x]" = 4))
+```
+
+
+```{r paircell, fig.cap = "Power for pairwise comparisons at stopping time by number superior, pars = 2.", fig.height=8, fig.width=6}
+pair_sup_dat1 <- res %>%
+  mutate(mu = pmax(mu1,mu2)) %>%
+  filter(pars == 2, mu %in% c(1, 1.25)) %>%
+  group_by(sup) %>%
+  dplyr::select(sup, starts_with("p_sup_pairwise.")) %>%
+  summarise_all(list(
+    `x = 0.99` = ~ mean(. > 0.99),
+    `x = 0.95` = ~ mean(. > 0.95), 
+    `x = 0.90` = ~ mean(. > 0.9), 
+    `x = 0.85` = ~ mean(. > 0.85))) %>%
+  ungroup()
+pdat <- gather(pair_sup_dat1, key, power, -sup) %>%
+  mutate(key = str_replace_all(key, "p_sup_pairwise.", "")) %>%
+  separate(key, c("comp", "x"), "_") %>%
+  separate(comp, c("a1", "a2"), sep = "-") %>%
+  mutate(dom = "Combination")
+p <- ggplot(pdat,
+       aes(factor(a2, levels = 0:12, labels = 0:12), 
+           factor(a1, levels = 0:12, labels = 0:12), fill = power)) +
+  facet_grid(sup ~ x) +
+  geom_tile(aes(colour = power)) +
+  scale_y_discrete(limits = as.character(12:0), breaks = seq(0,12,2)) +
+  scale_x_discrete(breaks = seq(0,12,2)) +
+  scale_fill_viridis_c(breaks = seq(0, 1, 0.1), limits = c(0, 1), option = "B") +
+  scale_colour_viridis_c(breaks = seq(0, 1, 0.1), limits = c(0, 1), option = "B") +
+  labs(x = "Arm j", y = "Arm i", 
+       fill = "Prob[Pr(Arm i > Arm j) > x] (power)",
+       colour = "Prob[Pr(Arm i > Arm j) > x] (power)") +
+  theme(legend.position = "bottom",
+        legend.box = "horizontal",
+        legend.justification = 0.5,
+        legend.key.height = unit(0.5, "lines"),
+        legend.key.width = unit(2.5, "lines"),
+        panel.grid.major = element_blank(),
+        text = element_text(size = 9), panel.grid.minor = element_blank()) +
+  coord_equal() +
+  guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5))
+grid.arrange(add_facet_labs(p, labelR = "Number superior", labelT = "Posterior threshold"))
+```
+
+
+```{r paircon, fig.cap = "Power for content level pairwise comparisons at stopping time by number superior, pars = 2.", fig.height=7}
+pair_sup_dat1 <- res %>%
+  mutate(mu = pmax(mu1,mu2)) %>%
+  filter(pars == 2, mu %in% c(1, 1.25)) %>%
+  group_by(sup) %>%
+  dplyr::select(sup, starts_with("p_sup_mes_pairwise.")) %>%
+  summarise_all(list(
+    `x = 0.99` = ~ mean(. > 0.99),
+    `x = 0.95` = ~ mean(. > 0.95), 
+    `x = 0.90` = ~ mean(. > 0.9), 
+    `x = 0.85` = ~ mean(. > 0.85))) %>%
+  ungroup()
+pdat <- gather(pair_sup_dat1, key, power, -sup) %>%
+  mutate(key = str_replace_all(key, "p_sup_mes_pairwise.", "")) %>%
+  separate(key, c("comp", "x"), "_") %>%
+  separate(comp, c("a1", "a2"), sep = "-") %>%
+  mutate(dom = "Message")
+p <- ggplot(pdat,
+       aes(factor(a2, labels = 1:4), factor(a1, labels = 1:4), fill = power)) +
+  facet_grid(sup ~ x) +
+  geom_tile(aes(colour = power)) +
+  scale_y_discrete(limits = as.character(4:1)) +
+  scale_fill_viridis_c(breaks = seq(0, 1, 0.1), limits = c(0, 1), option = "B") +
+  scale_colour_viridis_c(breaks = seq(0, 1, 0.1), limits = c(0, 1), option = "B") +
+  labs(x = "Content level j", y = "Content level i", 
+       fill = "Prob[Pr(Arm i > Arm j) > x] (power)",
+       colour = "Prob[Pr(Arm i > Arm j) > x] (power)") +
+  theme(legend.position = "bottom",
+        legend.box = "horizontal",
+        legend.justification = 0.5,
+        legend.key.height = unit(0.5, "lines"),
+        legend.key.width = unit(2.5, "lines"),
+        panel.grid.major = element_blank()) +
+  coord_equal() +
+  guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5))
+grid.arrange(add_facet_labs(p, labelR = "Number superior", labelT = "Posterior threshold"))
+```
+
+
+```{r pairtim, fig.cap = "Power for timing level pairwise comparisons at stopping time by number superior, pars = 2.", fig.height=7}
+pair_sup_dat1 <- res %>%
+  mutate(mu = pmax(mu1,mu2)) %>%
+  filter(pars == 2, mu %in% c(1, 1.25)) %>%
+  group_by(sup) %>%
+  dplyr::select(sup, starts_with("p_sup_tim_pairwise.")) %>%
+  summarise_all(list(
+    `x = 0.99` = ~ mean(. > 0.99),
+    `x = 0.95` = ~ mean(. > 0.95), 
+    `x = 0.90` = ~ mean(. > 0.9), 
+    `x = 0.85` = ~ mean(. > 0.85))) %>%
+  ungroup()
+pdat <- gather(pair_sup_dat1, key, power, -sup) %>%
+  mutate(key = str_replace_all(key, "p_sup_tim_pairwise.", "")) %>%
+  separate(key, c("comp", "x"), "_") %>%
+  separate(comp, c("a1", "a2"), sep = "-") %>%
+  mutate(dom = "Timing")
+p <- ggplot(pdat,
+       aes(factor(a2, labels = 1:3), factor(a1, labels = 1:3), fill = power)) +
+  facet_grid(sup ~ x) +
+  geom_tile(aes(colour = power)) +
+  scale_y_discrete(limits = as.character(3:1)) +
+  scale_fill_viridis_c(breaks = seq(0, 1, 0.1), limits = c(0, 1), option = "B") +
+  scale_colour_viridis_c(breaks = seq(0, 1, 0.1), limits = c(0, 1), option = "B") +
+  labs(x = "Timing level j", y = "Timing level i", 
+       fill = "Prob[Pr(Arm i > Arm j) > x] (power)",
+       colour = "Prob[Pr(Arm i > Arm j) > x] (power)") +
+  theme(legend.position = "bottom",
+        legend.box = "horizontal",
+        legend.justification = 0.5,
+        legend.key.height = unit(0.5, "lines"),
+        legend.key.width = unit(2.5, "lines"),
+        panel.grid.major = element_blank()) +
+  coord_equal() +
+  guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5))
+grid.arrange(add_facet_labs(p, labelR = "Number superior", labelT = "Posterior threshold"))
+```
+
+\clearpage
+
+## Expected Sample Sizes
+
+```{r ss}
+res %>%
+  filter(pars == 2) %>%
+  group_by(
+    pars, sup, nfirst, mu1, mu2) %>% 
+  dplyr::select(
+    pars, sup, nfirst, mu1, mu2, starts_with("n.")) %>%
+  summarise_all(mean) %>%
+  ungroup() %>%
+  mutate(nfirst = factor(nfirst)) %>%
+  kable(
+    align = 'r',
+    caption = "Expected sample sizes for each arm, pars = 2.", 
+    digits = c(0,0,0,2,2,rep(0,13)), booktabs = T,
+    linesep = "") %>%
+  kable_styling(full_width = F, 
+                bootstrap_options = "condensed", 
+                latex_options = c("hold_position", "scale_down"),
+                font_size = 7) %>%
+  add_header_above(c("Trial Design" = 3, "Means" = 2, "Expected sample size each arm" = 13))
+```
+
+
+## Expected Mean Estimate
+
+Recall that, for `sup` = 0, all means were equal to mu1 and mu2, whereas for `sup` > 0, all superior means were equal to `mu2` and other means are equal to `mu1` in truth.
+
+```{r exmean}
+res %>%
+  filter(pars == 2) %>%
+  group_by(
+    pars, sup, nfirst, mu1, mu2) %>% 
+  dplyr::select(
+    pars, sup, nfirst, mu1, mu2, starts_with("m.")) %>%
+  summarise_all(mean) %>%
+  ungroup() %>%
+  mutate(nfirst = factor(nfirst)) %>%
+  kable(
+    align = 'r',
+    caption = "Expected mean log-odds estimate for each arm, pars = 2.", 
+    digits = c(0,0,0,2,2,rep(2,13)), booktabs = T,
+    linesep = "") %>%
+  kable_styling(full_width = F, 
+                bootstrap_options = "condensed", 
+                latex_options = c("hold_position", "scale_down"),
+                font_size = 7) %>%
+  add_header_above(c("Trial Design" = 3, "Means" = 2, "Expected Mean each Arm" = 13))
+```
+
+
+## Non-inferior Stopping
+
+When stopping for non-inferiority, we have decided that the best arm is superior to all inactive arms, and the active arms are non-inferior to best by an amount $\Delta$. Therefore, when stopping for non-inferiority we hope that the active arms (Table \@ref(tab:noninfactive)) and best arm (Table \@ref(tab:noninfbest)) are a subset of the arms which are in truth within $\Delta$ of the best.
+
+```{r noninfactive}
+res %>%
+  filter(noninferior == 1, pars == 2) %>%
+  group_by(
+    pars, sup, nfirst, mu1, mu2) %>% 
+  mutate(n = n(), p = n() / 1e4) %>%
+  dplyr::select(
+    pars, sup, nfirst, mu1, mu2, n, p, starts_with("active.")) %>%
+  summarise_all(mean) %>%
+  rename_at(vars(starts_with('active.')), list( ~ sub('active.', '', .))) %>%
+  ungroup() %>%
+  mutate(nfirst = factor(nfirst)) %>%
+  kable(
+    caption = "Probability arm is active conditional on stopping for non-inferiority.", 
+    digits = c(0,0,0,2,2,0,2,rep(2,12)), booktabs = T,
+    linesep = "") %>%
+  kable_styling(full_width = F, 
+                bootstrap_options = "condensed", 
+                latex_options = c("hold_position", "scale_down"),
+                font_size = 7) %>%
+  add_header_above(c("Trial Design" = 3, "Means" = 2, "Non-inferiority" = 2, "Probability arm is active" = 12))
+```
+
+
+```{r noninfbest}
+res %>%
+  filter(noninferior == 1, pars == 2) %>%
+  group_by(
+    pars, sup, nfirst, mu1, mu2) %>% 
+  mutate(n = n(), p = n() / 1e4) %>%
+  dplyr::select(
+    pars, sup, nfirst, mu1, mu2, n, p, best) %>%
+  group_by(
+    pars, sup, nfirst, mu1, mu2, n, p) %>% 
+  count(best = factor(best, levels = 0:12), name = "isbest") %>%
+  mutate(isbest = isbest / n) %>%
+  ungroup() %>%
+  spread(best, isbest, fill = 0) %>%
+  kable(
+    caption = "Probability arm is current best conditional on stopping for non-inferiority.", 
+    digits = c(0,0,0,2,2,0,2,rep(2,12)), booktabs = T,
+    linesep = "") %>%
+  kable_styling(full_width = F, 
+                bootstrap_options = "condensed", 
+                latex_options = c("hold_position", "scale_down"),
+                font_size = 7) %>%
+  add_header_above(c("Trial Design" = 3, "Means" = 2, "Non-inferiority" = 2, "Probability arm is most probable best" = 12))
+```
+
