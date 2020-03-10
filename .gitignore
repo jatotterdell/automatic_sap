@@ -8,4 +8,5 @@
 *.hst
 *.ver
 *.tex
+!assets/templates/sap_latex.tex
 *.log
