@@ -1,29 +1,37 @@
 ---
 title: "Secondary Endpoint - Time to event"
+subtitle: "Approach for the secondary time-to-event endpoint in AuTOMATIC"
 author: "James Totterdell"
-date: "04/12/2019"
+date: "`r Sys.Date()`"
 output: 
-  bookdown::pdf_document2
+  bookdown::pdf_document2:
+    toc: true
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
-	echo = TRUE,
+	echo = FALSE,
 	message = FALSE,
 	warning = FALSE
 )
-
 library(tidyverse)
 library(magrittr)
 library(grid)
 library(gridExtra)
+library(splines)
+library(HRW)
+library(matrixStats)
+library(knitr)
+library(kableExtra)
+
+cex.labVal <- 0.75   ;   cex.axisVal <- 0.7
 ```
 
-This document outlines the approach for the secondary time-to-event endpoint in AuTOMATIC.
+\clearpage
 
-# Details
+# Setup
 
-Randomisation occurs 28 days prior to the scheduled due date of vaccination. We denote this as $t=1$, which corresponds to the interval $[0, 1)$. The scheduled due date is then $t=29$, corresponding to $[28,29)$. The interventions may be applied 14 days before due date, on the due date, or 7 days after the due date. That is $t=15$, $t=29$, or $t=36$.
+Participants are randomised 28 days before their scheduled vaccine due date. We denote this as $t=1$, which corresponds to the interval $[0, 1)$. The scheduled due date is then $t=29$, corresponding to $[28,29)$. The interventions may be applied 14 days before due date, on the due date, or 7 days after the due date. That is $t=15$, $t=29$, or $t=36$.
 
 We observe the time between randomisation to date of vaccination in days. Right-censoring occurs for all participants 90 days after their scheduled due date, that is $t=119$. Right-censoring may also occur earlier if the participant receives a subsequent intervention (e.g. say a reminder for their 6 month vaccine prior to receiving their 4 month vaccine). So, at the time $t$, the participant may have experienced the event $y=1$ or be censored $y=0$.
 
@@ -41,80 +49,135 @@ f(t|x) = \lambda(t|x)S(t-1|x)
 $$
 the probability of no event prior to the $t$th interval and an event in the $t$th interval.
 
-Essentially, the hazard models a binary response that, conditional on $T\geq t$, either the event occurs at $t$ or it does not (i.e. it occurs at some other time $t+1,...,k$). Therefore, we model
+We model for each subject $i$,
 $$
-\lambda(t|x) = h(\gamma_t + x^\top\beta)
+\lambda_i(t|x_i) = h(\eta_i(t))
 $$
-for some monotone increasing link function $h(\cdot)$.
+for some link function $h(\cdot)$.
 
-Standard choices are $h(\eta)=\text{expit}(\eta)=\text{logit}^{-1}(\eta)$ which implies (conditional odds)
-$$
-\psi(t) =\frac{\mathbb P[T=t|x]}{\mathbb P[T>t|x]} = \frac{f(t|x)}{S(t|x)} = \exp(\gamma_t + x^\top\beta)
-$$
-which implies (continuation ratio)
-$$
-\frac{\psi(t|x)}{\psi(t|\tilde x)} = \exp((x - \tilde x)^\top\beta)
-$$
-or $h(\eta) = 1 - \exp(-\exp(\eta))$ which implies (proportional log survival)
-$$
-\frac{\ln S(t|x)}{\ln S(t|\tilde x)} = \exp((x - \tilde x)^\top\beta).
-$$
+# Restricted Mean Survival
 
-The following just uses the logistic link function.
+When we allow flexible curves, the hazard ratio at a given time will not be of much interest, instead the curve of relative hazard is. 
+To get a simple summary of interest, we can look beyond the hazard ratio.
 
-The fully-specified linear predictor for a participant $i$ allows the covariate to be time dependent, $x_{it}$. Additionally, we allow the same intervention to have different effect depending on the timing. For example, message framing 1 may have a different effect on the hazard if given at $t=29$ versus $t=15$, say. The design therefore consists of three key variables. The value $a\in\{1,2,3,4\}$ flags the message framing, $b\in\{1,2,3\}$ flags the timing, and $w\in\{0,1\}$ indicates if the intervention is or is not active, which is determined according to the value of $t$ and which $b$ the participant received. This implies that there are 12 parameters $\beta$ in addition to the baseline hazard $\gamma_t$. At all time points, participants in the control group only contribute to the basline hazard. For all other participants, they contribute to the baseline hazard only until the intervention is applied ($w=1$) at which point they inform the relevant $\beta$.
-
-We expect few participants to be vaccinated prior to their due date. On and after the due date, we may expect a spike in vaccinations for a few weeks which gradually trails off. Under the specification above, each time point $t$ has it's own baseline $\gamma_t$. However, due to the large number of time-points, some of these may have very little information. A better approach is to smooth the $\gamma_t$ parameters. This could be via a random-walk prior or P-splines.
-
-The $\gamma_t$ parameters can be smoothed across time points by including them as a penalised spline term on time, for exmaple $\gamma_t = f(t)$ where
+Mean survival time is $\mathbb E[T]=\int_0^\infty S(t)dt$, the area under the survival curve. 
+However, this is generally infinite as survival may never reach zero (in modelling terms). 
+We can look instead at *restricted mean survival*
 $$
-\begin{aligned}
-f(t) &= \sum_{m=1}^p \delta_mB_m(t) \\
-\delta|\sigma^2 &\sim \text{RW}(1;\sigma^2) \\
-\sigma^2 &\sim \text{IG}(0.25, 0.1).
-\end{aligned}
+\mathbb E[\min(T, t^\star)] = \int_0^{t^\star} S(t)dt
 $$
+and the difference in RMST between groups
+$$
+\Delta_{ij} = \int_0^{t^\star}S_i(t)dt - \int_0^{t^\star} S_j(t)dt = \int_0^{t^\star}S_i(t)-S_j(t)dt
+$$
+that is, the area between survival curves. 
+In particular we will be interested in the RMST of each intervention relative to the baseline intervention $\Delta_{0j},j=1,...,12$.
 
-One issue with this specification is that it is somewhat inflexible, in that the hazard profile for all framings and timings follows the same pattern, changing only by some multiplicative factor. Additional flexibility could be incorporated by allowing the effects, $\beta$, to be time-varying so that different profiles are allowed for different combinations of framing and timing. This would be reasonably straightforward by just letting the intervention effects to vary the B-spline parameters used to handle the baseline hazard. Problem is this increases complexity of interpretation; we would probably just have to plot the various profiles, or summarise in terms of mean/median time to vaccination etc.
+At any time of interest, $t^\star$, the relative RMST estimates the increase in $t^\star$-mean survival time compared to no intervention.
 
-The above handles the index vaccinations. We would also like to analyse all vaccinations for all children of each randomised parent. The most straightforward way is to extend the linear predictor to include the appropriate multi-level design $Z\alpha$ for design matrix Z.
+In our discrete time to event case, we replace integrals with sums $\sum_{j=1}^{j^\star}S(t_j)\Delta_j$ where $\Delta$ is the difference between times (if $t_1=1,t_2=2,...$ etc then these just all equal 1).
 
 \clearpage
 
-# Example
+# Models
 
-The following R code simulates some data according to a complex baseline hazard shape with sharp jumps and declines. Recall that all the $a$ (framings) are assumed to have the same effect, but this effect varies depending on timing, $b$, 0.75, 0.5, 0.25.
+## Model 1
+
+In the first model, the baseline hazard is modelled flexibly and we assume that each intervention only effects the hazard curve linearly.
+
+$$
+\begin{aligned}
+z_i &\in \{1,2,3,4\},\quad\quad \text{message framing}\\
+w_i &\in \{1,2,3\}, \quad \quad \quad \text{message timing} \\
+v_i &= 4(w_i - 1) + z_i,\  \text{framing/timing combination} \\
+\tau_i &\in \{15,29,36\},\quad \ \ \text{value of allocated timing} \\
+x_i(t) &= \mathbf{1}_{[\tau_i, \infty)}(t) \\
+\eta_{i}(t) &= \beta_0 + \beta_1t +  \textstyle\sum_{m=1}^M \gamma_{0m}z_{m}(t) + x_{i}(t)\left[\alpha_{0v_i}  + \alpha_{1v_i}t\right] \\
+\beta &\sim N(0, B) \\
+\alpha &\sim N(0, A) \\
+\gamma_0|\tau_0 &\sim N(0, \tau_0^2I_M) \\
+\tau_0 &\sim C^+(0, 2)
+\end{aligned}
+$$
+
+## Model 2
+
+More flexible than Model 1 by allowing each timing to flexibly alter the underlying hazard, but each intervention type still acts only linearly on the adjusted curve.
+
+$$
+\begin{aligned}
+\eta_{i}(t) &= \beta_0 + \beta_1t + \textstyle\sum_{m=1}^M \gamma_{0m}z_{m}(t) + 
+x_{i}(t)\left[\alpha_{0v_i} + \alpha_{1v_i}t +  \textstyle\sum_{m=1}^M \gamma_{w_im}z_{m}(t)\right] \\
+\beta &\sim N(0, B) \\
+\alpha &\sim N(0, A) \\
+\gamma_j|\tau_j &\sim N(0, \tau_j^2I_M),\ j=0,1,...,3 \\
+\tau_j &\sim C^+(0, 2),\ j=0,1,...,3
+\end{aligned}
+$$
+
+
+## Model 3
+
+Each combination of intervention framing and timing can flexibly deviate from the baseline hazard curve.
+
+
+$$
+\begin{aligned}
+\eta_{i}(t) &= \beta_0 + \beta_1t + \textstyle\sum_{m=1}^M \gamma_{0m}z_{m}(t) + 
+x_{i}(t)\left[\alpha_{0v_i} + \alpha_{1v_i}t + \textstyle\sum_{m=1}^M \gamma_{v_im}z_{m}(t)\right]\\
+\beta &\sim N(0, B) \\
+\alpha &\sim N(0, A) \\
+\gamma_j|\tau_j &\sim N(0, \tau_j^2I_M),\ j=0,1,...,12 \\
+\tau_j &\sim C^+(0, 2),\ j=0,1,...,12
+\end{aligned}
+$$
+
+Priors with more structure could be specified to share information across message framings or timings etc.
+
+\clearpage
+
+# Example 1
+
+Assume equal allocation of 10,000 participants.
+
+Assume the following data generating process where each hazard is a complex function of time varying by timing and type of intervention.
 
 ```{r}
-N <- 4800
-K <- 119
+N <- 10000
+K <- 61
 ID <- 1:N
-Data <- data.frame(ID)
-b <- rep(1:3, each = N/3)
-a <- rep(1:4, times = N/4)
-Data <- cbind(Data, a, b, i = 1)
+i <- sample.int(4, N, replace = T) - 1
+j <- sample.int(4, N, replace = T)
+Data <- expand_grid(tibble(ID = ID, i = i, j = j), period = 1:K)
 
-# Person-period
-expand <- function(x, t) {
-  data <- x[rep(1:length(x[,1]), each = t), ]
-  rownames(data) <- NULL
-  return(data)
-}
-Data <- expand(Data, K)
-Data <- rbind(Data, expand.grid(ID = (N+1):(N+400), a = 1, b = 1, i = 0)[rep(1:400, each = K), ])
-Data$period <- rep(1:K, N + 400)
-Data$w1 <- with(Data, ifelse(b == 1 & i == 1 & period >= 15, 1, 0))
-Data$w2 <- with(Data, ifelse(b == 2 & i == 1 & period >= 29, 1, 0))
-Data$w3 <- with(Data, ifelse(b == 3 & i == 1 & period >= 36, 1, 0))
-Data$w <- as.numeric(with(Data, w1 | w2 | w3))
+Data$w1 <- with(Data, ifelse(i == 1 & period >= 15, 1, 0))
+Data$w2 <- with(Data, ifelse(i == 2 & period >= 29, 1, 0))
+Data$w3 <- with(Data, ifelse(i == 3 & period >= 36, 1, 0))
+
+Data$w <- ifelse(Data$w1 == 1, 1, ifelse(Data$w2 == 1, 2, ifelse(Data$w3 == 1, 3, 0)))
+Data$x <- Data$j * (Data$w > 0)
+
+b1 <- c(-2, 1, 1.5, 2)
+b2 <- c(-2, 1, 1.5, 2)
+b3 <- c(-2, 2, 2.5, 3)
 
 # Linear predictor
-Data$haz <- plogis(-5.5 +
-                    # 0.5*sin(pi*Data$period/26) +
-                    3.5*dnorm(Data$period, 30, 2) +
-                    2.5*(Data$period >= 29 & Data$period < 43) + 
-                    0.75*Data$w1 + 0.5*Data$w2 + 0.25*Data$w3)
-Data %<>% group_by(ID) %>% mutate(haz = if_else(row_number() == n(), 1, haz))
+Data$haz <- plogis(
+  -5.5 +
+  3.5*dnorm(Data$period, 30, 3) +
+  2.5*(Data$period >= 29 & Data$period < 43) + 
+  (Data$x == 2)*(Data$w==1)*(-2)*(Data$period >= 15 & Data$period < 21) +
+  (Data$x == 2)*(Data$w==1)*(-2)*(Data$period >= 29 & Data$period < 36) +
+  (Data$x == 2)*(Data$w==2)*(-2)*exp(-0.5*Data$w2) +
+  (Data$x == 2)*(Data$w==3)*(-2)*exp(-0.5*Data$w3) +
+  (Data$x != 2)*
+  ((Data$w == 1)*Data$w1*(Data$period >= 15 & Data$period < 29) +
+  (Data$w == 1)*b1[Data$j]*sin(Data$period*2*pi/10)*Data$w1*(Data$period >= 29 & Data$period < 43) +
+  (Data$w == 2)*b2[Data$j]*Data$w2*(Data$period >= 35 & Data$period < 60) +
+  -1*Data$w3*(Data$period >= 36 & Data$period < 42) + 
+  (Data$w == 3)*exp(b3[Data$j]*Data$w3*Data$period/100)))
+Data %<>% group_by(ID) %>% mutate(haz = if_else(row_number() == n(), 1, haz)) %>% ungroup()
+
 # Marginal probability
 Data %<>% 
   group_by(ID) %>%
@@ -126,67 +189,3460 @@ Data %<>% filter(period < K)
 Data_events <- Data %>%
   group_by(ID) %>%
   filter(period == min(c(which(y == 1), K - 1))) %>%
-  ungroup() %>%
-  select(-w1, -w2, -w3)
+  ungroup()
 # Data set
 Data_final <- Data %>%
   group_by(ID) %>%
   filter(period <= min(c(which(y == 1), K - 1))) %>%
-  ungroup() %>%
-  select(-w1, -w2, -w3)
+  ungroup()
 # Aggregated data set
 Data_agg <- Data_final %>%
-  group_by(period, a, b, w, i) %>%
+  group_by(period, w, i, j, x, w1, w2, w3) %>%
   summarise(n = n(), y = sum(y))
-# Assumed curves
-par(mfrow = c(3, 1))
-plot(Data %>% filter(ID == 1) %>% pull(haz), type = "l", ylab = "Hazard", xlab = "Time")
-plot(Data %>% filter(ID == 1) %>% pull(surv), type = "l", ylab = "Survival", xlab = "Time")
-plot(Data %>% filter(ID == 1) %>% pull(p), type = "l", ylab = "Probability of event", xlab = "Time")
 ```
 
-The above would be implemented in Stan, but just for quick examples sake, the parameters are estimated using `mgcv::gam`.
 
-```{r, fig.cap="Estimated mean survival profiles, baseline is black line.", fig.height=7}
-library(rstanarm)
-library(bayestestR)
-library(matrixStats)
-library(mgcv)
 
-options(contrasts=c('contr.bayes', 'contr.bayes'))
+```{r, fig.cap="True data generating process.", fig.height=7}
+# Assumed curves
+par(mfrow = c(2, 1))
+plot(Data %>% group_by(i) %>% filter(i == 0) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", ylim = c(0, 0.5))
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 1) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "red", lty = 1)
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 2) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "red", lty = 2)
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 3) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "red", lty = 3)
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 4) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "red", lty = 4)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 1) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "blue", lty = 1)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 2) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "blue", lty = 2)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 3) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "blue", lty = 3)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 4) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "blue", lty = 4)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 1) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "green", lty = 1)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 2) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "green", lty = 2)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 3) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "green", lty = 3)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 4) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "green", lty = 4)
+lines(Data %>% group_by(i) %>% filter(i == 0) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", ylim = c(0, 0.5))
 
-m <- gam(cbind(y, n - y) ~ s(period, bs = "ps", k = 50) + factor(a):factor(b):w, 
-         data = Data_agg, family = binomial())
-summary(m)
+plot(Data %>% group_by(i) %>% filter(i == 0) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", ylim = c(0, 1))
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 1) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "red", lty = 1)
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 2) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "red", lty = 2)
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 3) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "red", lty = 3)
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 4) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "red", lty = 4)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 1) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "blue", lty = 1)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 2) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "blue", lty = 2)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 3) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "blue", lty = 3)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 4) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "blue", lty = 4)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 1) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "green", lty = 1)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 2) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "green", lty = 2)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 3) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "green", lty = 3)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 4) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "green", lty = 4)
+lines(Data %>% group_by(i) %>% filter(i == 0) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", ylim = c(0, 1))
+```
 
-Data_agg$linpred <- predict(m)
-Data_agg %<>% group_by(a,b,i) %>% 
-  mutate(haz = plogis(linpred),
-         surv = cumprod(1 - haz),
-         p = haz * lag(surv, default = 1))
-Data_null <- expand.grid(period = 1:K, a = 1, b = 1, w = 0, i= 0)
-Data_null$linpred <- predict(m, newdata = Data_null)
-Data_null %<>% group_by(a,b) %>% 
-  mutate(haz = plogis(linpred),
-         surv = cumprod(1 - haz),
-         p = haz * lag(surv, default = 1))
+## Model 1
 
-p1 <- ggplot(Data_agg %>% filter(i == 1), aes(period, haz, 
-                     colour = factor(b), linetype = factor(a))) +
-  geom_line() +
-  geom_line(data = Data_null, colour = "black") +
-  xlim(0, 60) +
-  ylab("Hazard") +
-  theme_bw()
 
-p2 <- ggplot(Data_agg %>% filter(i == 1), aes(period, surv, 
-                     colour = factor(b), linetype = factor(a))) +
-  geom_line() +
-  geom_line(data = Data_null, colour = "black") +
-  xlim(0, 60) +
-  ylab("Probability unvaccinated") +
-  theme_bw()
+```{r, results='hide'}
+smod <- "
+data {
+  int N;
+  int ncZ;
+  int ncX;
+  int y[N];
+  int n[N];
+  matrix[N, ncX] X;
+  matrix[N, ncZ] Z0;
+}
 
-grid.arrange(p1, p2, ncol = 1)
+parameters {
+  vector[ncX] beta;
+  vector[ncZ] gamma0;
+  real<lower=0> tau0;
+}
+
+model {
+  beta ~ normal(0, 5);
+  gamma0 ~ normal(0, tau0);
+  tau0 ~ cauchy(0, 2);
+  y ~ binomial_logit(n, X*beta + Z0*gamma0);
+}
+"
+
+y <- Data_agg$y
+n <- Data_agg$n
+X <- model.matrix( ~ period * factor(w) : factor(x), data = Data_agg, 
+                   contrasts.arg = list(`factor(w)` = "contr.treatment", `factor(x)` = "contr.treatment"))
+X <- X[, !grepl("factor\\(w\\)0|factor\\(x\\)0", colnames(X))]
+
+nknots <- 20
+intKnots <- quantile(unique(X[,2]),seq(0,1,length=(nknots+2))[-c(1,(nknots+2))])
+Z0 <- ZOSull(X[, 2], range(X[, 2]), intKnots)
+allData <- list(N = length(y), ncZ = ncol(Z0), ncX = ncol(X),
+                y = y, n = n, X = X, Z0 = Z0)
+
+library(rstan)
+ss <- stan_model(model_code = smod)
+nWarm <- 1000 ; nKept <- 1000 ; nThin <- 1
+invisible(sfit <- sampling(
+  ss,
+  data = allData,
+  warmup = nWarm, iter = (nWarm + nKept),
+  chains = 1, thin = nThin, refresh = 0, control = list(max_treedepth = 11)))
+draws <- extract(sfit, permuted = FALSE)
+```
+
+
+
+```{r}
+xg <- seq(1, 60, length.out = 60)
+Xg <- cbind(1, xg, 
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x1
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x2
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x3
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x4
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg)
+Zg0 <- ZOSull(xg, range(X[, 2]), intKnots)
+
+
+beta <- t(as.matrix(sfit, "beta"))
+gamma0 <- t(as.matrix(sfit, "gamma0"))
+Zg0gamma0 <- Zg0 %*% gamma0
+
+fhatMCMC0 <- plogis(Xg[, 1:2] %*% beta[1:2, ] + Zg0gamma0)
+fhatMCMC1 <- plogis(Xg[, c(1:3, 15)] %*% beta[c(1:3, 15), ] + Zg0gamma0)
+fhatMCMC2 <- plogis(Xg[, c(1:2,6,18)] %*% beta[c(1:2,6,18), ] + Zg0gamma0)
+fhatMCMC3 <- plogis(Xg[, c(1:2,9,21)] %*% beta[c(1:2,9,21), ] + Zg0gamma0)
+fhatMCMC4 <- plogis(Xg[, c(1:2,12,24)] %*% beta[c(1:2,12,24), ] + Zg0gamma0)
+fhatMCMC5 <- plogis(Xg[, c(1:2,4,16)] %*% beta[c(1:2,4,16), ] + Zg0gamma0)
+fhatMCMC6 <- plogis(Xg[, c(1:2,7,19)] %*% beta[c(1:2,7,19), ] + Zg0gamma0)
+fhatMCMC7 <- plogis(Xg[, c(1:2,10,22)] %*% beta[c(1:2,10,22), ] + Zg0gamma0)
+fhatMCMC8 <- plogis(Xg[, c(1:2,13,25)] %*% beta[c(1:2,13,25), ] + Zg0gamma0)
+fhatMCMC9 <- plogis(Xg[, c(1:2,5,17)] %*% beta[c(1:2,5,17), ] + Zg0gamma0)
+fhatMCMC10 <- plogis(Xg[, c(1:2,8,20)] %*% beta[c(1:2,8,20), ] + Zg0gamma0)
+fhatMCMC11 <- plogis(Xg[, c(1:2,11,23)] %*% beta[c(1:2,11,23), ] + Zg0gamma0)
+fhatMCMC12 <- plogis(Xg[, c(1:2,14,26)] %*% beta[c(1:2,14,26), ] + Zg0gamma0)
+
+survMCMC0 <- colCumprods(1 - fhatMCMC0)
+survMCMC1 <- colCumprods(1 - fhatMCMC1)
+survMCMC2 <- colCumprods(1 - fhatMCMC2)
+survMCMC3 <- colCumprods(1 - fhatMCMC3)
+survMCMC4 <- colCumprods(1 - fhatMCMC4)
+survMCMC5 <- colCumprods(1 - fhatMCMC5)
+survMCMC6 <- colCumprods(1 - fhatMCMC6)
+survMCMC7 <- colCumprods(1 - fhatMCMC7)
+survMCMC8 <- colCumprods(1 - fhatMCMC8)
+survMCMC9 <- colCumprods(1 - fhatMCMC9)
+survMCMC10 <- colCumprods(1 - fhatMCMC10)
+survMCMC11 <- colCumprods(1 - fhatMCMC11)
+survMCMC12 <- colCumprods(1 - fhatMCMC12)
+
+aucMCMC0 <- colCumsums(survMCMC0*diff(c(0, xg)))
+aucMCMC1 <- colCumsums(survMCMC1*diff(c(0, xg)))
+aucMCMC2 <- colCumsums(survMCMC2*diff(c(0, xg)))
+aucMCMC3 <- colCumsums(survMCMC3*diff(c(0, xg)))
+aucMCMC4 <- colCumsums(survMCMC4*diff(c(0, xg)))
+aucMCMC5 <- colCumsums(survMCMC5*diff(c(0, xg)))
+aucMCMC6 <- colCumsums(survMCMC6*diff(c(0, xg)))
+aucMCMC7 <- colCumsums(survMCMC7*diff(c(0, xg)))
+aucMCMC8 <- colCumsums(survMCMC8*diff(c(0, xg)))
+aucMCMC9 <- colCumsums(survMCMC9*diff(c(0, xg)))
+aucMCMC10 <- colCumsums(survMCMC10*diff(c(0, xg)))
+aucMCMC11 <- colCumsums(survMCMC11*diff(c(0, xg)))
+aucMCMC12 <- colCumsums(survMCMC12*diff(c(0, xg)))
+
+diffaucMCMC1 <- aucMCMC0 - aucMCMC1
+diffaucMCMC2 <- aucMCMC0 - aucMCMC2
+diffaucMCMC3 <- aucMCMC0 - aucMCMC3
+diffaucMCMC4 <- aucMCMC0 - aucMCMC4
+diffaucMCMC5 <- aucMCMC0 - aucMCMC5
+diffaucMCMC6 <- aucMCMC0 - aucMCMC6
+diffaucMCMC7 <- aucMCMC0 - aucMCMC7
+diffaucMCMC8 <- aucMCMC0 - aucMCMC8
+diffaucMCMC9 <- aucMCMC0 - aucMCMC9
+diffaucMCMC10 <- aucMCMC0 - aucMCMC10
+diffaucMCMC11 <- aucMCMC0 - aucMCMC11
+diffaucMCMC12 <- aucMCMC0 - aucMCMC12
+
+surv0 <- apply(survMCMC0, 1, mean)
+survlo0 <- apply(survMCMC0, 1, quantile, 0.025)
+survhi0 <- apply(survMCMC0, 1, quantile, 0.975)
+surv1 <- apply(survMCMC1, 1, mean)
+survlo1 <- apply(survMCMC1, 1, quantile, 0.025)
+survhi1 <- apply(survMCMC1, 1, quantile, 0.975)
+surv2 <- apply(survMCMC2, 1, mean)
+survlo2 <- apply(survMCMC2, 1, quantile, 0.025)
+survhi2 <- apply(survMCMC2, 1, quantile, 0.975)
+surv3 <- apply(survMCMC3, 1, mean)
+survlo3 <- apply(survMCMC3, 1, quantile, 0.025)
+survhi3 <- apply(survMCMC3, 1, quantile, 0.975)
+surv4 <- apply(survMCMC4, 1, mean)
+survlo4 <- apply(survMCMC4, 1, quantile, 0.025)
+survhi4 <- apply(survMCMC4, 1, quantile, 0.975)
+surv5 <- apply(survMCMC5, 1, mean)
+survlo5 <- apply(survMCMC5, 1, quantile, 0.025)
+survhi5 <- apply(survMCMC5, 1, quantile, 0.975)
+surv6 <- apply(survMCMC6, 1, mean)
+survlo6 <- apply(survMCMC6, 1, quantile, 0.025)
+survhi6 <- apply(survMCMC6, 1, quantile, 0.975)
+surv7 <- apply(survMCMC7, 1, mean)
+survlo7 <- apply(survMCMC7, 1, quantile, 0.025)
+survhi7 <- apply(survMCMC7, 1, quantile, 0.975)
+surv8 <- apply(survMCMC8, 1, mean)
+survlo8 <- apply(survMCMC8, 1, quantile, 0.025)
+survhi8 <- apply(survMCMC8, 1, quantile, 0.975)
+surv9 <- apply(survMCMC9, 1, mean)
+survlo9 <- apply(survMCMC9, 1, quantile, 0.025)
+survhi9 <- apply(survMCMC9, 1, quantile, 0.975)
+surv10 <- apply(survMCMC10, 1, mean)
+survlo10 <- apply(survMCMC10, 1, quantile, 0.025)
+survhi10 <- apply(survMCMC10, 1, quantile, 0.975)
+surv11 <- apply(survMCMC11, 1, mean)
+survlo11 <- apply(survMCMC11, 1, quantile, 0.025)
+survhi11 <- apply(survMCMC11, 1, quantile, 0.975)
+surv12 <- apply(survMCMC12, 1, mean)
+survlo12 <- apply(survMCMC12, 1, quantile, 0.025)
+survhi12 <- apply(survMCMC12, 1, quantile, 0.975)
+
+auc0 <- apply(aucMCMC0, 1, mean)
+auclo0 <- apply(aucMCMC0, 1, quantile, 0.025)
+auchi0 <- apply(aucMCMC0, 1, quantile, 0.975)
+auc1 <- apply(aucMCMC1, 1, mean)
+auclo1 <- apply(aucMCMC1, 1, quantile, 0.025)
+auchi1 <- apply(aucMCMC1, 1, quantile, 0.975)
+auc2 <- apply(aucMCMC2, 1, mean)
+auclo2 <- apply(aucMCMC2, 1, quantile, 0.025)
+auchi2 <- apply(aucMCMC2, 1, quantile, 0.975)
+auc3 <- apply(aucMCMC3, 1, mean)
+auclo3 <- apply(aucMCMC3, 1, quantile, 0.025)
+auchi3 <- apply(aucMCMC3, 1, quantile, 0.975)
+auc4 <- apply(aucMCMC4, 1, mean)
+auclo4 <- apply(aucMCMC4, 1, quantile, 0.025)
+auchi4 <- apply(aucMCMC4, 1, quantile, 0.975)
+auc5 <- apply(aucMCMC5, 1, mean)
+auclo5 <- apply(aucMCMC5, 1, quantile, 0.025)
+auchi5 <- apply(aucMCMC5, 1, quantile, 0.975)
+auc6 <- apply(aucMCMC6, 1, mean)
+auclo6 <- apply(aucMCMC6, 1, quantile, 0.025)
+auchi6 <- apply(aucMCMC6, 1, quantile, 0.975)
+auc7 <- apply(aucMCMC7, 1, mean)
+auclo7 <- apply(aucMCMC7, 1, quantile, 0.025)
+auchi7 <- apply(aucMCMC7, 1, quantile, 0.975)
+auc8 <- apply(aucMCMC8, 1, mean)
+auclo8 <- apply(aucMCMC8, 1, quantile, 0.025)
+auchi8 <- apply(aucMCMC8, 1, quantile, 0.975)
+auc9 <- apply(aucMCMC9, 1, mean)
+auclo9 <- apply(aucMCMC9, 1, quantile, 0.025)
+auchi9 <- apply(aucMCMC9, 1, quantile, 0.975)
+auc10 <- apply(aucMCMC10, 1, mean)
+auclo10 <- apply(aucMCMC10, 1, quantile, 0.025)
+auchi10 <- apply(aucMCMC10, 1, quantile, 0.975)
+auc11 <- apply(aucMCMC11, 1, mean)
+auclo11 <- apply(aucMCMC11, 1, quantile, 0.025)
+auchi11 <- apply(aucMCMC11, 1, quantile, 0.975)
+auc12 <- apply(aucMCMC12, 1, mean)
+auclo12 <- apply(aucMCMC12, 1, quantile, 0.025)
+auchi12 <- apply(aucMCMC12, 1, quantile, 0.975)
+
+diffauc1 <- apply(diffaucMCMC1, 1, mean)
+diffauclo1 <- apply(diffaucMCMC1, 1, quantile, 0.025)
+diffauchi1 <- apply(diffaucMCMC1, 1, quantile, 0.975)
+diffauc2 <- apply(diffaucMCMC2, 1, mean)
+diffauclo2 <- apply(diffaucMCMC2, 1, quantile, 0.025)
+diffauchi2 <- apply(diffaucMCMC2, 1, quantile, 0.975)
+diffauc3 <- apply(diffaucMCMC3, 1, mean)
+diffauclo3 <- apply(diffaucMCMC3, 1, quantile, 0.025)
+diffauchi3 <- apply(diffaucMCMC3, 1, quantile, 0.975)
+diffauc4 <- apply(diffaucMCMC4, 1, mean)
+diffauclo4 <- apply(diffaucMCMC4, 1, quantile, 0.025)
+diffauchi4 <- apply(diffaucMCMC4, 1, quantile, 0.975)
+diffauc5 <- apply(diffaucMCMC5, 1, mean)
+diffauclo5 <- apply(diffaucMCMC5, 1, quantile, 0.025)
+diffauchi5 <- apply(diffaucMCMC5, 1, quantile, 0.975)
+diffauc6 <- apply(diffaucMCMC6, 1, mean)
+diffauclo6 <- apply(diffaucMCMC6, 1, quantile, 0.025)
+diffauchi6 <- apply(diffaucMCMC6, 1, quantile, 0.975)
+diffauc7 <- apply(diffaucMCMC7, 1, mean)
+diffauclo7 <- apply(diffaucMCMC7, 1, quantile, 0.025)
+diffauchi7 <- apply(diffaucMCMC7, 1, quantile, 0.975)
+diffauc8 <- apply(diffaucMCMC8, 1, mean)
+diffauclo8 <- apply(diffaucMCMC8, 1, quantile, 0.025)
+diffauchi8 <- apply(diffaucMCMC8, 1, quantile, 0.975)
+diffauc9 <- apply(diffaucMCMC9, 1, mean)
+diffauclo9 <- apply(diffaucMCMC9, 1, quantile, 0.025)
+diffauchi9 <- apply(diffaucMCMC9, 1, quantile, 0.975)
+diffauc10 <- apply(diffaucMCMC10, 1, mean)
+diffauclo10 <- apply(diffaucMCMC10, 1, quantile, 0.025)
+diffauchi10 <- apply(diffaucMCMC10, 1, quantile, 0.975)
+diffauc11 <- apply(diffaucMCMC11, 1, mean)
+diffauclo11 <- apply(diffaucMCMC11, 1, quantile, 0.025)
+diffauchi11 <- apply(diffaucMCMC11, 1, quantile, 0.975)
+diffauc12 <- apply(diffaucMCMC12, 1, mean)
+diffauclo12 <- apply(diffaucMCMC12, 1, quantile, 0.025)
+diffauchi12 <- apply(diffaucMCMC12, 1, quantile, 0.975)
+
+tab <- rbind(
+  "Int 1" = quantile(diffaucMCMC1[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 2" = quantile(diffaucMCMC2[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 3" = quantile(diffaucMCMC3[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 4" = quantile(diffaucMCMC4[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 5" = quantile(diffaucMCMC5[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 6" = quantile(diffaucMCMC6[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 7" = quantile(diffaucMCMC7[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 8" = quantile(diffaucMCMC8[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 9" = quantile(diffaucMCMC9[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 10" = quantile(diffaucMCMC10[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 11" = quantile(diffaucMCMC11[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 12" = quantile(diffaucMCMC12[57, ], probs = c(0.025, 0.5, 0.975))
+)
+kable(tab, caption = "Relative RMST(57)", col.names = c("2.5%", "50.0%", "97.5%"),
+      booktabs = TRUE, digits = 1) %>%
+  kable_styling()
+```
+
+
+```{r fig.cap = "Survival curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo1[xg>=15], rev(survhi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo5[xg>=29], rev(survhi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo9[xg>=36], rev(survhi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo2[xg>=15], rev(survhi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo6[xg>=29], rev(survhi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo10[xg>=36], rev(survhi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo3[xg>=15], rev(survhi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo7[xg>=29], rev(survhi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo11[xg>=36], rev(survhi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo4[xg>=15], rev(survhi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo8[xg>=29], rev(survhi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo12[xg>=36], rev(survhi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+
+```{r fig.cap = "RMST curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo1[xg>=15], rev(auchi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo5[xg>=29], rev(auchi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo9[xg>=36], rev(auchi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo2[xg>=15], rev(auchi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo6[xg>=29], rev(auchi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo10[xg>=36], rev(auchi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo3[xg>=15], rev(auchi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo7[xg>=29], rev(auchi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo11[xg>=36], rev(auchi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo4[xg>=15], rev(auchi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo8[xg>=29], rev(auchi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo12[xg>=36], rev(auchi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+
+
+```{r fig.cap = "Relative (to baseline) RMST curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo1[xg>=15], rev(diffauchi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo5[xg>=29], rev(diffauchi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo9[xg>=36], rev(diffauchi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo2[xg>=15], rev(diffauchi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo6[xg>=29], rev(diffauchi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo10[xg>=36], rev(diffauchi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo3[xg>=15], rev(diffauchi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo7[xg>=29], rev(diffauchi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo11[xg>=36], rev(diffauchi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo4[xg>=15], rev(diffauchi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo8[xg>=29], rev(diffauchi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo12[xg>=36], rev(diffauchi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+\clearpage
+
+## Model 2
+
+```{r, results='hide'}
+smod <- "
+data {
+  int N;
+  int ncZ;
+  int ncX;
+  int y[N];
+  int n[N];
+  matrix[N, ncX] X;
+  matrix[N, ncZ] Z0;
+  matrix[N, ncZ] Z1;
+  matrix[N, ncZ] Z2;
+  matrix[N, ncZ] Z3;
+}
+
+parameters {
+  vector[ncX] beta;
+  vector[ncZ] gamma0;
+  vector[ncZ] gamma1;
+  vector[ncZ] gamma2;
+  vector[ncZ] gamma3;
+  real<lower=0> tau0;
+  real<lower=0> tau1;
+  real<lower=0> tau2;
+  real<lower=0> tau3;
+}
+
+model {
+  beta ~ normal(0, 5);
+  gamma0 ~ normal(0, tau0);
+  gamma1 ~ normal(0, tau1);
+  gamma2 ~ normal(0, tau2);
+  gamma3 ~ normal(0, tau3);
+  tau0 ~ cauchy(0, 2);
+  tau1 ~ cauchy(0, 2);
+  tau2 ~ cauchy(0, 2);
+  tau3 ~ cauchy(0, 2);
+  y ~ binomial_logit(n, X*beta + Z0*gamma0 + Z1*gamma1 + Z2*gamma2 + Z3*gamma3);
+}
+"
+
+y <- Data_agg$y
+n <- Data_agg$n
+X <- model.matrix( ~ period * factor(w) : factor(x), data = Data_agg, 
+                   contrasts.arg = list(`factor(w)` = "contr.treatment", `factor(x)` = "contr.treatment"))
+X <- X[, !grepl("factor\\(w\\)0|factor\\(x\\)0", colnames(X))]
+
+nknots <- 20
+intKnots <- quantile(unique(X[,2]),seq(0,1,length=(nknots+2))[-c(1,(nknots+2))])
+Z0 <- ZOSull(X[, 2], range(X[, 2]), intKnots)
+Z1 <- Data_agg$w1 * Z0
+Z2 <- Data_agg$w2 * Z0
+Z3 <- Data_agg$w3 * Z0
+allData <- list(N = length(y), ncZ = ncol(Z0), ncX = ncol(X),
+                y = y, n = n, X = X, Z0 = Z0, Z1 = Z1, Z2 = Z2, Z3 = Z3)
+
+ss <- stan_model(model_code = smod)
+nWarm <- 1000 ; nKept <- 1000 ; nThin <- 1
+invisible(sfit <- sampling(
+  ss,
+  data = allData,
+  warmup = nWarm, iter = (nWarm + nKept),
+  chains = 1, thin = nThin, refresh = 0))
+draws <- extract(sfit, permuted = FALSE)
+```
+
+
+
+```{r, fig.height=7, fig.cap="Shared baseline curve, intervention x timing specific constant effect."}
+xg <- seq(1, 60, length.out = 60)
+Xg <- cbind(1, xg, 
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x1
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x2
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x3
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x4
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg)
+Zg0 <- ZOSull(xg, range(X[, 2]), intKnots)
+Zg1 <- (xg >= 15) * Zg0
+Zg2 <- (xg >= 29) * Zg0
+Zg3 <- (xg >= 36) * Zg0
+
+beta <- t(as.matrix(sfit, "beta"))
+gamma0 <- t(as.matrix(sfit, "gamma0"))
+gamma1 <- t(as.matrix(sfit, "gamma1"))
+gamma2 <- t(as.matrix(sfit, "gamma2"))
+gamma3 <- t(as.matrix(sfit, "gamma3"))
+Zg0gamma0 <- Zg0 %*% gamma0
+Zg1gamma1 <- Zg1 %*% gamma1
+Zg2gamma2 <- Zg2 %*% gamma2
+Zg3gamma3 <- Zg3 %*% gamma3
+
+fhatMCMC0 <- plogis(Xg[, 1:2] %*% beta[1:2, ] + Zg0gamma0)
+fhatMCMC1 <- plogis(Xg[, c(1:3, 15)] %*% beta[c(1:3, 15), ] + Zg0gamma0 + Zg1gamma1)
+fhatMCMC2 <- plogis(Xg[, c(1:2,6,18)] %*% beta[c(1:2,6,18), ] + Zg0gamma0 + Zg1gamma1)
+fhatMCMC3 <- plogis(Xg[, c(1:2,9,21)] %*% beta[c(1:2,9,21), ] + Zg0gamma0 + Zg1gamma1)
+fhatMCMC4 <- plogis(Xg[, c(1:2,12,24)] %*% beta[c(1:2,12,24), ] + Zg0gamma0 + Zg1gamma1)
+fhatMCMC5 <- plogis(Xg[, c(1:2,4,16)] %*% beta[c(1:2,4,16), ] + Zg0gamma0 + Zg2gamma2)
+fhatMCMC6 <- plogis(Xg[, c(1:2,7,19)] %*% beta[c(1:2,7,19), ] + Zg0gamma0 + Zg2gamma2)
+fhatMCMC7 <- plogis(Xg[, c(1:2,10,22)] %*% beta[c(1:2,10,22), ] + Zg0gamma0 + Zg2gamma2)
+fhatMCMC8 <- plogis(Xg[, c(1:2,13,25)] %*% beta[c(1:2,13,25), ] + Zg0gamma0 + Zg2gamma2)
+fhatMCMC9 <- plogis(Xg[, c(1:2,5,17)] %*% beta[c(1:2,5,17), ] + Zg0gamma0 + Zg3gamma3)
+fhatMCMC10 <- plogis(Xg[, c(1:2,8,20)] %*% beta[c(1:2,8,20), ] + Zg0gamma0 + Zg3gamma3)
+fhatMCMC11 <- plogis(Xg[, c(1:2,11,23)] %*% beta[c(1:2,11,23), ] + Zg0gamma0 + Zg3gamma3)
+fhatMCMC12 <- plogis(Xg[, c(1:2,14,26)] %*% beta[c(1:2,14,26), ] + Zg0gamma0 + Zg3gamma3)
+
+survMCMC0 <- colCumprods(1 - fhatMCMC0)
+survMCMC1 <- colCumprods(1 - fhatMCMC1)
+survMCMC2 <- colCumprods(1 - fhatMCMC2)
+survMCMC3 <- colCumprods(1 - fhatMCMC3)
+survMCMC4 <- colCumprods(1 - fhatMCMC4)
+survMCMC5 <- colCumprods(1 - fhatMCMC5)
+survMCMC6 <- colCumprods(1 - fhatMCMC6)
+survMCMC7 <- colCumprods(1 - fhatMCMC7)
+survMCMC8 <- colCumprods(1 - fhatMCMC8)
+survMCMC9 <- colCumprods(1 - fhatMCMC9)
+survMCMC10 <- colCumprods(1 - fhatMCMC10)
+survMCMC11 <- colCumprods(1 - fhatMCMC11)
+survMCMC12 <- colCumprods(1 - fhatMCMC12)
+
+aucMCMC0 <- colCumsums(survMCMC0*diff(c(0, xg)))
+aucMCMC1 <- colCumsums(survMCMC1*diff(c(0, xg)))
+aucMCMC2 <- colCumsums(survMCMC2*diff(c(0, xg)))
+aucMCMC3 <- colCumsums(survMCMC3*diff(c(0, xg)))
+aucMCMC4 <- colCumsums(survMCMC4*diff(c(0, xg)))
+aucMCMC5 <- colCumsums(survMCMC5*diff(c(0, xg)))
+aucMCMC6 <- colCumsums(survMCMC6*diff(c(0, xg)))
+aucMCMC7 <- colCumsums(survMCMC7*diff(c(0, xg)))
+aucMCMC8 <- colCumsums(survMCMC8*diff(c(0, xg)))
+aucMCMC9 <- colCumsums(survMCMC9*diff(c(0, xg)))
+aucMCMC10 <- colCumsums(survMCMC10*diff(c(0, xg)))
+aucMCMC11 <- colCumsums(survMCMC11*diff(c(0, xg)))
+aucMCMC12 <- colCumsums(survMCMC12*diff(c(0, xg)))
+
+diffaucMCMC1 <- aucMCMC0 - aucMCMC1
+diffaucMCMC2 <- aucMCMC0 - aucMCMC2
+diffaucMCMC3 <- aucMCMC0 - aucMCMC3
+diffaucMCMC4 <- aucMCMC0 - aucMCMC4
+diffaucMCMC5 <- aucMCMC0 - aucMCMC5
+diffaucMCMC6 <- aucMCMC0 - aucMCMC6
+diffaucMCMC7 <- aucMCMC0 - aucMCMC7
+diffaucMCMC8 <- aucMCMC0 - aucMCMC8
+diffaucMCMC9 <- aucMCMC0 - aucMCMC9
+diffaucMCMC10 <- aucMCMC0 - aucMCMC10
+diffaucMCMC11 <- aucMCMC0 - aucMCMC11
+diffaucMCMC12 <- aucMCMC0 - aucMCMC12
+
+surv0 <- apply(survMCMC0, 1, mean)
+survlo0 <- apply(survMCMC0, 1, quantile, 0.025)
+survhi0 <- apply(survMCMC0, 1, quantile, 0.975)
+surv1 <- apply(survMCMC1, 1, mean)
+survlo1 <- apply(survMCMC1, 1, quantile, 0.025)
+survhi1 <- apply(survMCMC1, 1, quantile, 0.975)
+surv2 <- apply(survMCMC2, 1, mean)
+survlo2 <- apply(survMCMC2, 1, quantile, 0.025)
+survhi2 <- apply(survMCMC2, 1, quantile, 0.975)
+surv3 <- apply(survMCMC3, 1, mean)
+survlo3 <- apply(survMCMC3, 1, quantile, 0.025)
+survhi3 <- apply(survMCMC3, 1, quantile, 0.975)
+surv4 <- apply(survMCMC4, 1, mean)
+survlo4 <- apply(survMCMC4, 1, quantile, 0.025)
+survhi4 <- apply(survMCMC4, 1, quantile, 0.975)
+surv5 <- apply(survMCMC5, 1, mean)
+survlo5 <- apply(survMCMC5, 1, quantile, 0.025)
+survhi5 <- apply(survMCMC5, 1, quantile, 0.975)
+surv6 <- apply(survMCMC6, 1, mean)
+survlo6 <- apply(survMCMC6, 1, quantile, 0.025)
+survhi6 <- apply(survMCMC6, 1, quantile, 0.975)
+surv7 <- apply(survMCMC7, 1, mean)
+survlo7 <- apply(survMCMC7, 1, quantile, 0.025)
+survhi7 <- apply(survMCMC7, 1, quantile, 0.975)
+surv8 <- apply(survMCMC8, 1, mean)
+survlo8 <- apply(survMCMC8, 1, quantile, 0.025)
+survhi8 <- apply(survMCMC8, 1, quantile, 0.975)
+surv9 <- apply(survMCMC9, 1, mean)
+survlo9 <- apply(survMCMC9, 1, quantile, 0.025)
+survhi9 <- apply(survMCMC9, 1, quantile, 0.975)
+surv10 <- apply(survMCMC10, 1, mean)
+survlo10 <- apply(survMCMC10, 1, quantile, 0.025)
+survhi10 <- apply(survMCMC10, 1, quantile, 0.975)
+surv11 <- apply(survMCMC11, 1, mean)
+survlo11 <- apply(survMCMC11, 1, quantile, 0.025)
+survhi11 <- apply(survMCMC11, 1, quantile, 0.975)
+surv12 <- apply(survMCMC12, 1, mean)
+survlo12 <- apply(survMCMC12, 1, quantile, 0.025)
+survhi12 <- apply(survMCMC12, 1, quantile, 0.975)
+
+auc0 <- apply(aucMCMC0, 1, mean)
+auclo0 <- apply(aucMCMC0, 1, quantile, 0.025)
+auchi0 <- apply(aucMCMC0, 1, quantile, 0.975)
+auc1 <- apply(aucMCMC1, 1, mean)
+auclo1 <- apply(aucMCMC1, 1, quantile, 0.025)
+auchi1 <- apply(aucMCMC1, 1, quantile, 0.975)
+auc2 <- apply(aucMCMC2, 1, mean)
+auclo2 <- apply(aucMCMC2, 1, quantile, 0.025)
+auchi2 <- apply(aucMCMC2, 1, quantile, 0.975)
+auc3 <- apply(aucMCMC3, 1, mean)
+auclo3 <- apply(aucMCMC3, 1, quantile, 0.025)
+auchi3 <- apply(aucMCMC3, 1, quantile, 0.975)
+auc4 <- apply(aucMCMC4, 1, mean)
+auclo4 <- apply(aucMCMC4, 1, quantile, 0.025)
+auchi4 <- apply(aucMCMC4, 1, quantile, 0.975)
+auc5 <- apply(aucMCMC5, 1, mean)
+auclo5 <- apply(aucMCMC5, 1, quantile, 0.025)
+auchi5 <- apply(aucMCMC5, 1, quantile, 0.975)
+auc6 <- apply(aucMCMC6, 1, mean)
+auclo6 <- apply(aucMCMC6, 1, quantile, 0.025)
+auchi6 <- apply(aucMCMC6, 1, quantile, 0.975)
+auc7 <- apply(aucMCMC7, 1, mean)
+auclo7 <- apply(aucMCMC7, 1, quantile, 0.025)
+auchi7 <- apply(aucMCMC7, 1, quantile, 0.975)
+auc8 <- apply(aucMCMC8, 1, mean)
+auclo8 <- apply(aucMCMC8, 1, quantile, 0.025)
+auchi8 <- apply(aucMCMC8, 1, quantile, 0.975)
+auc9 <- apply(aucMCMC9, 1, mean)
+auclo9 <- apply(aucMCMC9, 1, quantile, 0.025)
+auchi9 <- apply(aucMCMC9, 1, quantile, 0.975)
+auc10 <- apply(aucMCMC10, 1, mean)
+auclo10 <- apply(aucMCMC10, 1, quantile, 0.025)
+auchi10 <- apply(aucMCMC10, 1, quantile, 0.975)
+auc11 <- apply(aucMCMC11, 1, mean)
+auclo11 <- apply(aucMCMC11, 1, quantile, 0.025)
+auchi11 <- apply(aucMCMC11, 1, quantile, 0.975)
+auc12 <- apply(aucMCMC12, 1, mean)
+auclo12 <- apply(aucMCMC12, 1, quantile, 0.025)
+auchi12 <- apply(aucMCMC12, 1, quantile, 0.975)
+
+diffauc1 <- apply(diffaucMCMC1, 1, mean)
+diffauclo1 <- apply(diffaucMCMC1, 1, quantile, 0.025)
+diffauchi1 <- apply(diffaucMCMC1, 1, quantile, 0.975)
+diffauc2 <- apply(diffaucMCMC2, 1, mean)
+diffauclo2 <- apply(diffaucMCMC2, 1, quantile, 0.025)
+diffauchi2 <- apply(diffaucMCMC2, 1, quantile, 0.975)
+diffauc3 <- apply(diffaucMCMC3, 1, mean)
+diffauclo3 <- apply(diffaucMCMC3, 1, quantile, 0.025)
+diffauchi3 <- apply(diffaucMCMC3, 1, quantile, 0.975)
+diffauc4 <- apply(diffaucMCMC4, 1, mean)
+diffauclo4 <- apply(diffaucMCMC4, 1, quantile, 0.025)
+diffauchi4 <- apply(diffaucMCMC4, 1, quantile, 0.975)
+diffauc5 <- apply(diffaucMCMC5, 1, mean)
+diffauclo5 <- apply(diffaucMCMC5, 1, quantile, 0.025)
+diffauchi5 <- apply(diffaucMCMC5, 1, quantile, 0.975)
+diffauc6 <- apply(diffaucMCMC6, 1, mean)
+diffauclo6 <- apply(diffaucMCMC6, 1, quantile, 0.025)
+diffauchi6 <- apply(diffaucMCMC6, 1, quantile, 0.975)
+diffauc7 <- apply(diffaucMCMC7, 1, mean)
+diffauclo7 <- apply(diffaucMCMC7, 1, quantile, 0.025)
+diffauchi7 <- apply(diffaucMCMC7, 1, quantile, 0.975)
+diffauc8 <- apply(diffaucMCMC8, 1, mean)
+diffauclo8 <- apply(diffaucMCMC8, 1, quantile, 0.025)
+diffauchi8 <- apply(diffaucMCMC8, 1, quantile, 0.975)
+diffauc9 <- apply(diffaucMCMC9, 1, mean)
+diffauclo9 <- apply(diffaucMCMC9, 1, quantile, 0.025)
+diffauchi9 <- apply(diffaucMCMC9, 1, quantile, 0.975)
+diffauc10 <- apply(diffaucMCMC10, 1, mean)
+diffauclo10 <- apply(diffaucMCMC10, 1, quantile, 0.025)
+diffauchi10 <- apply(diffaucMCMC10, 1, quantile, 0.975)
+diffauc11 <- apply(diffaucMCMC11, 1, mean)
+diffauclo11 <- apply(diffaucMCMC11, 1, quantile, 0.025)
+diffauchi11 <- apply(diffaucMCMC11, 1, quantile, 0.975)
+diffauc12 <- apply(diffaucMCMC12, 1, mean)
+diffauclo12 <- apply(diffaucMCMC12, 1, quantile, 0.025)
+diffauchi12 <- apply(diffaucMCMC12, 1, quantile, 0.975)
+
+tab <- rbind(
+  "Int 1" = quantile(diffaucMCMC1[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 2" = quantile(diffaucMCMC2[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 3" = quantile(diffaucMCMC3[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 4" = quantile(diffaucMCMC4[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 5" = quantile(diffaucMCMC5[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 6" = quantile(diffaucMCMC6[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 7" = quantile(diffaucMCMC7[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 8" = quantile(diffaucMCMC8[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 9" = quantile(diffaucMCMC9[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 10" = quantile(diffaucMCMC10[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 11" = quantile(diffaucMCMC11[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 12" = quantile(diffaucMCMC12[57, ], probs = c(0.025, 0.5, 0.975))
+)
+kable(tab, caption = "Relative RMST(57)", col.names = c("2.5%", "50.0%", "97.5%"),
+      booktabs = TRUE, digits = 1) %>%
+  kable_styling()
+```
+
+
+```{r fig.cap = "Survival curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo1[xg>=15], rev(survhi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo5[xg>=29], rev(survhi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo9[xg>=36], rev(survhi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo2[xg>=15], rev(survhi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo6[xg>=29], rev(survhi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo10[xg>=36], rev(survhi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo3[xg>=15], rev(survhi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo7[xg>=29], rev(survhi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo11[xg>=36], rev(survhi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo4[xg>=15], rev(survhi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo8[xg>=29], rev(survhi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo12[xg>=36], rev(survhi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+
+```{r fig.cap = "RMST curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo1[xg>=15], rev(auchi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo5[xg>=29], rev(auchi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo9[xg>=36], rev(auchi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo2[xg>=15], rev(auchi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo6[xg>=29], rev(auchi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo10[xg>=36], rev(auchi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo3[xg>=15], rev(auchi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo7[xg>=29], rev(auchi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo11[xg>=36], rev(auchi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo4[xg>=15], rev(auchi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo8[xg>=29], rev(auchi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo12[xg>=36], rev(auchi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+
+
+```{r fig.cap = "Relative (to baseline) RMST curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo1[xg>=15], rev(diffauchi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo5[xg>=29], rev(diffauchi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo9[xg>=36], rev(diffauchi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo2[xg>=15], rev(diffauchi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo6[xg>=29], rev(diffauchi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo10[xg>=36], rev(diffauchi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo3[xg>=15], rev(diffauchi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo7[xg>=29], rev(diffauchi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo11[xg>=36], rev(diffauchi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo4[xg>=15], rev(diffauchi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo8[xg>=29], rev(diffauchi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo12[xg>=36], rev(diffauchi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+\clearpage
+
+## Model 3
+
+
+```{r, results='hide'}
+smod <- "
+data {
+  int N;
+  int ncZ;
+  int ncX;
+  int y[N];
+  int n[N];
+  matrix[N, ncX] X;
+  matrix[N, ncZ] Z0;
+  matrix[N, ncZ] Z1;
+  matrix[N, ncZ] Z2;
+  matrix[N, ncZ] Z3;
+  matrix[N, ncZ] Z4;
+  matrix[N, ncZ] Z5;
+  matrix[N, ncZ] Z6;
+  matrix[N, ncZ] Z7;
+  matrix[N, ncZ] Z8;
+  matrix[N, ncZ] Z9;
+  matrix[N, ncZ] Z10;
+  matrix[N, ncZ] Z11;
+  matrix[N, ncZ] Z12;
+}
+
+parameters {
+  vector[ncX] beta;
+  vector[ncZ] gamma0;
+  vector[ncZ] gamma1;
+  vector[ncZ] gamma2;
+  vector[ncZ] gamma3;
+  vector[ncZ] gamma4;
+  vector[ncZ] gamma5;
+  vector[ncZ] gamma6;
+  vector[ncZ] gamma7;
+  vector[ncZ] gamma8;
+  vector[ncZ] gamma9;
+  vector[ncZ] gamma10;
+  vector[ncZ] gamma11;
+  vector[ncZ] gamma12;
+  real<lower=0> tau0;
+  real<lower=0> tau1;
+  real<lower=0> tau2;
+  real<lower=0> tau3;
+  real<lower=0> tau4;
+  real<lower=0> tau5;
+  real<lower=0> tau6;
+  real<lower=0> tau7;
+  real<lower=0> tau8;
+  real<lower=0> tau9;
+  real<lower=0> tau10;
+  real<lower=0> tau11;
+  real<lower=0> tau12;
+}
+
+model {
+  beta ~ normal(0, 5);
+  gamma0 ~ normal(0, tau0);
+  gamma1 ~ normal(0, tau1);
+  gamma2 ~ normal(0, tau2);
+  gamma3 ~ normal(0, tau3);
+  gamma4 ~ normal(0, tau4);
+  gamma5 ~ normal(0, tau5);
+  gamma6 ~ normal(0, tau6);
+  gamma7 ~ normal(0, tau7);
+  gamma8 ~ normal(0, tau8);
+  gamma9 ~ normal(0, tau9);
+  gamma10 ~ normal(0, tau10);
+  gamma11 ~ normal(0, tau11);
+  gamma12 ~ normal(0, tau12);
+  tau0 ~ cauchy(0, 2);
+  tau1 ~ cauchy(0, 2);
+  tau2 ~ cauchy(0, 2);
+  tau3 ~ cauchy(0, 2);
+  tau4 ~ cauchy(0, 2);
+  tau5 ~ cauchy(0, 2);
+  tau6 ~ cauchy(0, 2);
+  tau7 ~ cauchy(0, 2);
+  tau8 ~ cauchy(0, 2);
+  tau9 ~ cauchy(0, 2);
+  tau10 ~ cauchy(0, 2);
+  tau11 ~ cauchy(0, 2);
+  tau12 ~ cauchy(0, 2);
+  y ~ binomial_logit(n, X*beta + Z0*gamma0 + Z1*gamma1 + Z2*gamma2 + Z3*gamma3 +
+                        Z4*gamma4 + Z5*gamma5 + Z6*gamma6 + Z7*gamma7 + Z8*gamma8 +
+                        Z9*gamma9 + Z10*gamma10 + Z11*gamma11 + Z12*gamma12);
+}
+"
+
+y <- Data_agg$y
+n <- Data_agg$n
+X <- model.matrix( ~ period * factor(w) : factor(x), data = Data_agg, 
+                   contrasts.arg = list(`factor(w)` = "contr.treatment", `factor(x)` = "contr.treatment"))
+X <- X[, !grepl("factor\\(w\\)0|factor\\(x\\)0", colnames(X))]
+
+nknots <- 10
+intKnots <- quantile(unique(X[,2]),seq(0,1,length=(nknots+2))[-c(1,(nknots+2))])
+Z0 <- ZOSull(X[, 2], range(X[, 2]), intKnots)
+Z1 <- (Data_agg$x == 1) * Data_agg$w1 * Z0
+Z2 <- (Data_agg$x == 2) * Data_agg$w1 * Z0
+Z3 <- (Data_agg$x == 3) * Data_agg$w1 * Z0
+Z4 <- (Data_agg$x == 4) * Data_agg$w1 * Z0
+Z5 <- (Data_agg$x == 1) * Data_agg$w2 * Z0
+Z6 <- (Data_agg$x == 2) * Data_agg$w2 * Z0
+Z7 <- (Data_agg$x == 3) * Data_agg$w2 * Z0
+Z8 <- (Data_agg$x == 4) * Data_agg$w2 * Z0
+Z9 <- (Data_agg$x == 1) * Data_agg$w3 * Z0
+Z10 <- (Data_agg$x == 2) * Data_agg$w3 * Z0
+Z11 <- (Data_agg$x == 3) * Data_agg$w3 * Z0
+Z12 <- (Data_agg$x == 4) * Data_agg$w3 * Z0
+
+allData <- list(N = length(y), ncZ = ncol(Z0), ncX = ncol(X),
+                y = y, n = n, X = X, Z0 = Z0, Z1 = Z1, Z2 = Z2, Z3 = Z3,
+                Z4 = Z4, Z5 = Z5, Z6 = Z6, Z7 = Z7, Z8 = Z8, Z9 = Z9,
+                Z10 = Z10, Z11 = Z11, Z12 = Z12)
+
+ss <- stan_model(model_code = smod)
+nWarm <- 500 ; nKept <- 1000 ; nThin <- 1
+invisible(sfit <- sampling(
+  ss,
+  data = allData,
+  warmup = nWarm, iter = (nWarm + nKept),
+  chains = 1, thin = nThin, refresh = 0, control = list(max_treedepth = 10)))
+draws <- extract(sfit, permuted = FALSE)
+```
+
+
+```{r}
+xg <- seq(1, 60, length.out = 60)
+Xg <- cbind(1, xg, 
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x1
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x2
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x3
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x4
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg)
+Zg0 <- ZOSull(xg, range(X[, 2]), intKnots)
+Zg1 <- (xg >= 15) * Zg0
+Zg2 <- (xg >= 29) * Zg0
+Zg3 <- (xg >= 36) * Zg0
+
+beta <- t(as.matrix(sfit, "beta"))
+gamma0 <- t(as.matrix(sfit, "gamma0"))
+gamma1 <- t(as.matrix(sfit, "gamma1"))
+gamma2 <- t(as.matrix(sfit, "gamma2"))
+gamma3 <- t(as.matrix(sfit, "gamma3"))
+gamma4 <- t(as.matrix(sfit, "gamma4"))
+gamma5 <- t(as.matrix(sfit, "gamma5"))
+gamma6 <- t(as.matrix(sfit, "gamma6"))
+gamma7 <- t(as.matrix(sfit, "gamma7"))
+gamma8 <- t(as.matrix(sfit, "gamma8"))
+gamma9 <- t(as.matrix(sfit, "gamma9"))
+gamma10 <- t(as.matrix(sfit, "gamma10"))
+gamma11 <- t(as.matrix(sfit, "gamma11"))
+gamma12 <- t(as.matrix(sfit, "gamma12"))
+
+Zg0gamma0 <- Zg0 %*% gamma0
+
+fhatMCMC0 <- plogis(Xg[, 1:2] %*% beta[1:2, ] + Zg0gamma0)
+fhatMCMC1 <- plogis(Xg[, c(1:3, 15)] %*% beta[c(1:3, 15), ] + Zg0gamma0 + Zg1 %*% gamma1)
+fhatMCMC2 <- plogis(Xg[, c(1:2,6,18)] %*% beta[c(1:2,6,18), ] + Zg0gamma0 + Zg1 %*% gamma2)
+fhatMCMC3 <- plogis(Xg[, c(1:2,9,21)] %*% beta[c(1:2,9,21), ] + Zg0gamma0 + Zg1 %*% gamma3)
+fhatMCMC4 <- plogis(Xg[, c(1:2,12,24)] %*% beta[c(1:2,12,24), ] + Zg0gamma0 + Zg1 %*% gamma4)
+fhatMCMC5 <- plogis(Xg[, c(1:2,4,16)] %*% beta[c(1:2,4,16), ] + Zg0gamma0 + Zg2 %*% gamma5)
+fhatMCMC6 <- plogis(Xg[, c(1:2,7,19)] %*% beta[c(1:2,7,19), ] + Zg0gamma0 + Zg2 %*% gamma6)
+fhatMCMC7 <- plogis(Xg[, c(1:2,10,22)] %*% beta[c(1:2,10,22), ] + Zg0gamma0 + Zg2 %*% gamma7)
+fhatMCMC8 <- plogis(Xg[, c(1:2,13,25)] %*% beta[c(1:2,13,25), ] + Zg0gamma0 + Zg2 %*% gamma8)
+fhatMCMC9 <- plogis(Xg[, c(1:2,5,17)] %*% beta[c(1:2,5,17), ] + Zg0gamma0 + Zg3 %*% gamma9)
+fhatMCMC10 <- plogis(Xg[, c(1:2,8,20)] %*% beta[c(1:2,8,20), ] + Zg0gamma0 + Zg3 %*% gamma10)
+fhatMCMC11 <- plogis(Xg[, c(1:2,11,23)] %*% beta[c(1:2,11,23), ] + Zg0gamma0 + Zg3 %*% gamma11)
+fhatMCMC12 <- plogis(Xg[, c(1:2,14,26)] %*% beta[c(1:2,14,26), ] + Zg0gamma0 + Zg3 %*% gamma12)
+
+survMCMC0 <- colCumprods(1 - fhatMCMC0)
+survMCMC1 <- colCumprods(1 - fhatMCMC1)
+survMCMC2 <- colCumprods(1 - fhatMCMC2)
+survMCMC3 <- colCumprods(1 - fhatMCMC3)
+survMCMC4 <- colCumprods(1 - fhatMCMC4)
+survMCMC5 <- colCumprods(1 - fhatMCMC5)
+survMCMC6 <- colCumprods(1 - fhatMCMC6)
+survMCMC7 <- colCumprods(1 - fhatMCMC7)
+survMCMC8 <- colCumprods(1 - fhatMCMC8)
+survMCMC9 <- colCumprods(1 - fhatMCMC9)
+survMCMC10 <- colCumprods(1 - fhatMCMC10)
+survMCMC11 <- colCumprods(1 - fhatMCMC11)
+survMCMC12 <- colCumprods(1 - fhatMCMC12)
+
+aucMCMC0 <- colCumsums(survMCMC0*diff(c(0, xg)))
+aucMCMC1 <- colCumsums(survMCMC1*diff(c(0, xg)))
+aucMCMC2 <- colCumsums(survMCMC2*diff(c(0, xg)))
+aucMCMC3 <- colCumsums(survMCMC3*diff(c(0, xg)))
+aucMCMC4 <- colCumsums(survMCMC4*diff(c(0, xg)))
+aucMCMC5 <- colCumsums(survMCMC5*diff(c(0, xg)))
+aucMCMC6 <- colCumsums(survMCMC6*diff(c(0, xg)))
+aucMCMC7 <- colCumsums(survMCMC7*diff(c(0, xg)))
+aucMCMC8 <- colCumsums(survMCMC8*diff(c(0, xg)))
+aucMCMC9 <- colCumsums(survMCMC9*diff(c(0, xg)))
+aucMCMC10 <- colCumsums(survMCMC10*diff(c(0, xg)))
+aucMCMC11 <- colCumsums(survMCMC11*diff(c(0, xg)))
+aucMCMC12 <- colCumsums(survMCMC12*diff(c(0, xg)))
+
+diffaucMCMC1 <- aucMCMC0 - aucMCMC1
+diffaucMCMC2 <- aucMCMC0 - aucMCMC2
+diffaucMCMC3 <- aucMCMC0 - aucMCMC3
+diffaucMCMC4 <- aucMCMC0 - aucMCMC4
+diffaucMCMC5 <- aucMCMC0 - aucMCMC5
+diffaucMCMC6 <- aucMCMC0 - aucMCMC6
+diffaucMCMC7 <- aucMCMC0 - aucMCMC7
+diffaucMCMC8 <- aucMCMC0 - aucMCMC8
+diffaucMCMC9 <- aucMCMC0 - aucMCMC9
+diffaucMCMC10 <- aucMCMC0 - aucMCMC10
+diffaucMCMC11 <- aucMCMC0 - aucMCMC11
+diffaucMCMC12 <- aucMCMC0 - aucMCMC12
+
+surv0 <- apply(survMCMC0, 1, mean)
+survlo0 <- apply(survMCMC0, 1, quantile, 0.025)
+survhi0 <- apply(survMCMC0, 1, quantile, 0.975)
+surv1 <- apply(survMCMC1, 1, mean)
+survlo1 <- apply(survMCMC1, 1, quantile, 0.025)
+survhi1 <- apply(survMCMC1, 1, quantile, 0.975)
+surv2 <- apply(survMCMC2, 1, mean)
+survlo2 <- apply(survMCMC2, 1, quantile, 0.025)
+survhi2 <- apply(survMCMC2, 1, quantile, 0.975)
+surv3 <- apply(survMCMC3, 1, mean)
+survlo3 <- apply(survMCMC3, 1, quantile, 0.025)
+survhi3 <- apply(survMCMC3, 1, quantile, 0.975)
+surv4 <- apply(survMCMC4, 1, mean)
+survlo4 <- apply(survMCMC4, 1, quantile, 0.025)
+survhi4 <- apply(survMCMC4, 1, quantile, 0.975)
+surv5 <- apply(survMCMC5, 1, mean)
+survlo5 <- apply(survMCMC5, 1, quantile, 0.025)
+survhi5 <- apply(survMCMC5, 1, quantile, 0.975)
+surv6 <- apply(survMCMC6, 1, mean)
+survlo6 <- apply(survMCMC6, 1, quantile, 0.025)
+survhi6 <- apply(survMCMC6, 1, quantile, 0.975)
+surv7 <- apply(survMCMC7, 1, mean)
+survlo7 <- apply(survMCMC7, 1, quantile, 0.025)
+survhi7 <- apply(survMCMC7, 1, quantile, 0.975)
+surv8 <- apply(survMCMC8, 1, mean)
+survlo8 <- apply(survMCMC8, 1, quantile, 0.025)
+survhi8 <- apply(survMCMC8, 1, quantile, 0.975)
+surv9 <- apply(survMCMC9, 1, mean)
+survlo9 <- apply(survMCMC9, 1, quantile, 0.025)
+survhi9 <- apply(survMCMC9, 1, quantile, 0.975)
+surv10 <- apply(survMCMC10, 1, mean)
+survlo10 <- apply(survMCMC10, 1, quantile, 0.025)
+survhi10 <- apply(survMCMC10, 1, quantile, 0.975)
+surv11 <- apply(survMCMC11, 1, mean)
+survlo11 <- apply(survMCMC11, 1, quantile, 0.025)
+survhi11 <- apply(survMCMC11, 1, quantile, 0.975)
+surv12 <- apply(survMCMC12, 1, mean)
+survlo12 <- apply(survMCMC12, 1, quantile, 0.025)
+survhi12 <- apply(survMCMC12, 1, quantile, 0.975)
+
+auc0 <- apply(aucMCMC0, 1, mean)
+auclo0 <- apply(aucMCMC0, 1, quantile, 0.025)
+auchi0 <- apply(aucMCMC0, 1, quantile, 0.975)
+auc1 <- apply(aucMCMC1, 1, mean)
+auclo1 <- apply(aucMCMC1, 1, quantile, 0.025)
+auchi1 <- apply(aucMCMC1, 1, quantile, 0.975)
+auc2 <- apply(aucMCMC2, 1, mean)
+auclo2 <- apply(aucMCMC2, 1, quantile, 0.025)
+auchi2 <- apply(aucMCMC2, 1, quantile, 0.975)
+auc3 <- apply(aucMCMC3, 1, mean)
+auclo3 <- apply(aucMCMC3, 1, quantile, 0.025)
+auchi3 <- apply(aucMCMC3, 1, quantile, 0.975)
+auc4 <- apply(aucMCMC4, 1, mean)
+auclo4 <- apply(aucMCMC4, 1, quantile, 0.025)
+auchi4 <- apply(aucMCMC4, 1, quantile, 0.975)
+auc5 <- apply(aucMCMC5, 1, mean)
+auclo5 <- apply(aucMCMC5, 1, quantile, 0.025)
+auchi5 <- apply(aucMCMC5, 1, quantile, 0.975)
+auc6 <- apply(aucMCMC6, 1, mean)
+auclo6 <- apply(aucMCMC6, 1, quantile, 0.025)
+auchi6 <- apply(aucMCMC6, 1, quantile, 0.975)
+auc7 <- apply(aucMCMC7, 1, mean)
+auclo7 <- apply(aucMCMC7, 1, quantile, 0.025)
+auchi7 <- apply(aucMCMC7, 1, quantile, 0.975)
+auc8 <- apply(aucMCMC8, 1, mean)
+auclo8 <- apply(aucMCMC8, 1, quantile, 0.025)
+auchi8 <- apply(aucMCMC8, 1, quantile, 0.975)
+auc9 <- apply(aucMCMC9, 1, mean)
+auclo9 <- apply(aucMCMC9, 1, quantile, 0.025)
+auchi9 <- apply(aucMCMC9, 1, quantile, 0.975)
+auc10 <- apply(aucMCMC10, 1, mean)
+auclo10 <- apply(aucMCMC10, 1, quantile, 0.025)
+auchi10 <- apply(aucMCMC10, 1, quantile, 0.975)
+auc11 <- apply(aucMCMC11, 1, mean)
+auclo11 <- apply(aucMCMC11, 1, quantile, 0.025)
+auchi11 <- apply(aucMCMC11, 1, quantile, 0.975)
+auc12 <- apply(aucMCMC12, 1, mean)
+auclo12 <- apply(aucMCMC12, 1, quantile, 0.025)
+auchi12 <- apply(aucMCMC12, 1, quantile, 0.975)
+
+diffauc1 <- apply(diffaucMCMC1, 1, mean)
+diffauclo1 <- apply(diffaucMCMC1, 1, quantile, 0.025)
+diffauchi1 <- apply(diffaucMCMC1, 1, quantile, 0.975)
+diffauc2 <- apply(diffaucMCMC2, 1, mean)
+diffauclo2 <- apply(diffaucMCMC2, 1, quantile, 0.025)
+diffauchi2 <- apply(diffaucMCMC2, 1, quantile, 0.975)
+diffauc3 <- apply(diffaucMCMC3, 1, mean)
+diffauclo3 <- apply(diffaucMCMC3, 1, quantile, 0.025)
+diffauchi3 <- apply(diffaucMCMC3, 1, quantile, 0.975)
+diffauc4 <- apply(diffaucMCMC4, 1, mean)
+diffauclo4 <- apply(diffaucMCMC4, 1, quantile, 0.025)
+diffauchi4 <- apply(diffaucMCMC4, 1, quantile, 0.975)
+diffauc5 <- apply(diffaucMCMC5, 1, mean)
+diffauclo5 <- apply(diffaucMCMC5, 1, quantile, 0.025)
+diffauchi5 <- apply(diffaucMCMC5, 1, quantile, 0.975)
+diffauc6 <- apply(diffaucMCMC6, 1, mean)
+diffauclo6 <- apply(diffaucMCMC6, 1, quantile, 0.025)
+diffauchi6 <- apply(diffaucMCMC6, 1, quantile, 0.975)
+diffauc7 <- apply(diffaucMCMC7, 1, mean)
+diffauclo7 <- apply(diffaucMCMC7, 1, quantile, 0.025)
+diffauchi7 <- apply(diffaucMCMC7, 1, quantile, 0.975)
+diffauc8 <- apply(diffaucMCMC8, 1, mean)
+diffauclo8 <- apply(diffaucMCMC8, 1, quantile, 0.025)
+diffauchi8 <- apply(diffaucMCMC8, 1, quantile, 0.975)
+diffauc9 <- apply(diffaucMCMC9, 1, mean)
+diffauclo9 <- apply(diffaucMCMC9, 1, quantile, 0.025)
+diffauchi9 <- apply(diffaucMCMC9, 1, quantile, 0.975)
+diffauc10 <- apply(diffaucMCMC10, 1, mean)
+diffauclo10 <- apply(diffaucMCMC10, 1, quantile, 0.025)
+diffauchi10 <- apply(diffaucMCMC10, 1, quantile, 0.975)
+diffauc11 <- apply(diffaucMCMC11, 1, mean)
+diffauclo11 <- apply(diffaucMCMC11, 1, quantile, 0.025)
+diffauchi11 <- apply(diffaucMCMC11, 1, quantile, 0.975)
+diffauc12 <- apply(diffaucMCMC12, 1, mean)
+diffauclo12 <- apply(diffaucMCMC12, 1, quantile, 0.025)
+diffauchi12 <- apply(diffaucMCMC12, 1, quantile, 0.975)
+
+tab <- rbind(
+  "Int 1" = quantile(diffaucMCMC1[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 2" = quantile(diffaucMCMC2[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 3" = quantile(diffaucMCMC3[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 4" = quantile(diffaucMCMC4[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 5" = quantile(diffaucMCMC5[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 6" = quantile(diffaucMCMC6[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 7" = quantile(diffaucMCMC7[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 8" = quantile(diffaucMCMC8[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 9" = quantile(diffaucMCMC9[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 10" = quantile(diffaucMCMC10[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 11" = quantile(diffaucMCMC11[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 12" = quantile(diffaucMCMC12[57, ], probs = c(0.025, 0.5, 0.975))
+)
+kable(tab, caption = "Relative RMST(57)", col.names = c("2.5%", "50.0%", "97.5%"),
+      booktabs = TRUE, digits = 1) %>%
+  kable_styling()
+```
+
+
+```{r fig.cap = "Survival curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo1[xg>=15], rev(survhi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo5[xg>=29], rev(survhi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo9[xg>=36], rev(survhi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo2[xg>=15], rev(survhi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo6[xg>=29], rev(survhi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo10[xg>=36], rev(survhi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo3[xg>=15], rev(survhi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo7[xg>=29], rev(survhi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo11[xg>=36], rev(survhi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo4[xg>=15], rev(survhi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo8[xg>=29], rev(survhi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo12[xg>=36], rev(survhi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+
+```{r fig.cap = "RMST curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo1[xg>=15], rev(auchi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo5[xg>=29], rev(auchi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo9[xg>=36], rev(auchi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo2[xg>=15], rev(auchi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo6[xg>=29], rev(auchi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo10[xg>=36], rev(auchi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo3[xg>=15], rev(auchi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo7[xg>=29], rev(auchi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo11[xg>=36], rev(auchi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo4[xg>=15], rev(auchi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo8[xg>=29], rev(auchi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo12[xg>=36], rev(auchi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+
+
+```{r fig.cap = "Relative (to baseline) RMST curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo1[xg>=15], rev(diffauchi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo5[xg>=29], rev(diffauchi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo9[xg>=36], rev(diffauchi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo2[xg>=15], rev(diffauchi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo6[xg>=29], rev(diffauchi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo10[xg>=36], rev(diffauchi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo3[xg>=15], rev(diffauchi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo7[xg>=29], rev(diffauchi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo11[xg>=36], rev(diffauchi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo4[xg>=15], rev(diffauchi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo8[xg>=29], rev(diffauchi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo12[xg>=36], rev(diffauchi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+\clearpage
+
+# Example 2
+
+Due to RAR we will likely not observe equal allocations. 
+Instead assume very variable allocations with the same DGP as specified before.
+Also, we may stop earlier than 10,000, so assume a smaller maximum sample size of 5,000
+
+```{r}
+N <- 5000
+K <- 61
+ID <- 1:N
+i <- sample.int(4, N, replace = T, prob = c(0.25, 0.05, 0.2, 0.5)) - 1
+j <- sample.int(4, N, replace = T, prob = c(0.05, 0.15, 0.3, 0.5))
+Data <- expand_grid(tibble(ID = ID, i = i, j = j), period = 1:K)
+
+Data$w1 <- with(Data, ifelse(i == 1 & period >= 15, 1, 0))
+Data$w2 <- with(Data, ifelse(i == 2 & period >= 29, 1, 0))
+Data$w3 <- with(Data, ifelse(i == 3 & period >= 36, 1, 0))
+
+Data$w <- ifelse(Data$w1 == 1, 1, ifelse(Data$w2 == 1, 2, ifelse(Data$w3 == 1, 3, 0)))
+Data$x <- Data$j * (Data$w > 0)
+
+b1 <- c(-2, 1, 1.5, 2)
+b2 <- c(-2, 1, 1.5, 2)
+b3 <- c(-2, 2, 2.5, 3)
+
+# Linear predictor
+Data$haz <- plogis(
+  -5.5 +
+  3.5*dnorm(Data$period, 30, 3) +
+  2.5*(Data$period >= 29 & Data$period < 43) + 
+  (Data$x == 2)*(Data$w==1)*(-2)*(Data$period >= 15 & Data$period < 21) +
+  (Data$x == 2)*(Data$w==1)*(-2)*(Data$period >= 29 & Data$period < 36) +
+  (Data$x == 2)*(Data$w==2)*(-2)*exp(-0.5*Data$w2) +
+  (Data$x == 2)*(Data$w==3)*(-2)*exp(-0.5*Data$w3) +
+  (Data$x != 2)*
+  ((Data$w == 1)*Data$w1*(Data$period >= 15 & Data$period < 29) +
+  (Data$w == 1)*b1[Data$j]*sin(Data$period*2*pi/10)*Data$w1*(Data$period >= 29 & Data$period < 43) +
+  (Data$w == 2)*b2[Data$j]*Data$w2*(Data$period >= 35 & Data$period < 60) +
+  -1*Data$w3*(Data$period >= 36 & Data$period < 42) + 
+  (Data$w == 3)*exp(b3[Data$j]*Data$w3*Data$period/100)))
+Data %<>% group_by(ID) %>% mutate(haz = if_else(row_number() == n(), 1, haz)) %>% ungroup()
+
+# Marginal probability
+Data %<>% 
+  group_by(ID) %>%
+  mutate(surv = cumprod(1 - haz),
+         p = haz * lag(surv, default = 1),
+         y = rmultinom(1, 1, p))
+Data %<>% filter(period < K)
+# Event times
+Data_events <- Data %>%
+  group_by(ID) %>%
+  filter(period == min(c(which(y == 1), K - 1))) %>%
+  ungroup()
+# Data set
+Data_final <- Data %>%
+  group_by(ID) %>%
+  filter(period <= min(c(which(y == 1), K - 1))) %>%
+  ungroup()
+# Aggregated data set
+Data_agg <- Data_final %>%
+  group_by(period, w, i, j, x, w1, w2, w3) %>%
+  summarise(n = n(), y = sum(y))
+```
+
+
+
+```{r, fig.cap="True data generating process.", fig.height=7}
+# Assumed curves
+par(mfrow = c(2, 1))
+plot(Data %>% group_by(i) %>% filter(i == 0) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", ylim = c(0, 0.5))
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 1) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "red", lty = 1)
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 2) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "red", lty = 2)
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 3) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "red", lty = 3)
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 4) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "red", lty = 4)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 1) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "blue", lty = 1)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 2) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "blue", lty = 2)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 3) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "blue", lty = 3)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 4) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "blue", lty = 4)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 1) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "green", lty = 1)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 2) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "green", lty = 2)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 3) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "green", lty = 3)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 4) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", col = "green", lty = 4)
+lines(Data %>% group_by(i) %>% filter(i == 0) %>% slice(which(ID == min(ID))) %>% 
+       pull(haz), type = "l", ylab = "Hazard", xlab = "Time", ylim = c(0, 0.5))
+
+plot(Data %>% group_by(i) %>% filter(i == 0) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", ylim = c(0, 1))
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 1) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "red", lty = 1)
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 2) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "red", lty = 2)
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 3) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "red", lty = 3)
+lines(Data %>% group_by(i, j) %>% filter(i == 1, j == 4) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "red", lty = 4)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 1) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "blue", lty = 1)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 2) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "blue", lty = 2)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 3) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "blue", lty = 3)
+lines(Data %>% group_by(i, j) %>% filter(i == 2, j == 4) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "blue", lty = 4)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 1) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "green", lty = 1)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 2) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "green", lty = 2)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 3) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "green", lty = 3)
+lines(Data %>% group_by(i, j) %>% filter(i == 3, j == 4) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", col = "green", lty = 4)
+lines(Data %>% group_by(i) %>% filter(i == 0) %>% slice(which(ID == min(ID))) %>% 
+       pull(surv), type = "l", ylab = "Survival", xlab = "Time", ylim = c(0, 1))
+```
+
+## Model 1
+
+
+```{r, results='hide'}
+smod <- "
+data {
+  int N;
+  int ncZ;
+  int ncX;
+  int y[N];
+  int n[N];
+  matrix[N, ncX] X;
+  matrix[N, ncZ] Z0;
+}
+
+parameters {
+  vector[ncX] beta;
+  vector[ncZ] gamma0;
+  real<lower=0> tau0;
+}
+
+model {
+  beta ~ normal(0, 5);
+  gamma0 ~ normal(0, tau0);
+  tau0 ~ cauchy(0, 2);
+  y ~ binomial_logit(n, X*beta + Z0*gamma0);
+}
+"
+
+y <- Data_agg$y
+n <- Data_agg$n
+X <- model.matrix( ~ period * factor(w) : factor(x), data = Data_agg, 
+                   contrasts.arg = list(`factor(w)` = "contr.treatment", `factor(x)` = "contr.treatment"))
+X <- X[, !grepl("factor\\(w\\)0|factor\\(x\\)0", colnames(X))]
+
+nknots <- 20
+intKnots <- quantile(unique(X[,2]),seq(0,1,length=(nknots+2))[-c(1,(nknots+2))])
+Z0 <- ZOSull(X[, 2], range(X[, 2]), intKnots)
+allData <- list(N = length(y), ncZ = ncol(Z0), ncX = ncol(X),
+                y = y, n = n, X = X, Z0 = Z0)
+
+library(rstan)
+ss <- stan_model(model_code = smod)
+nWarm <- 1000 ; nKept <- 1000 ; nThin <- 1
+invisible(sfit <- sampling(
+  ss,
+  data = allData,
+  warmup = nWarm, iter = (nWarm + nKept),
+  chains = 1, thin = nThin, refresh = 0, control = list(max_treedepth = 11)))
+draws <- extract(sfit, permuted = FALSE)
+```
+
+
+
+```{r}
+xg <- seq(1, 60, length.out = 60)
+Xg <- cbind(1, xg, 
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x1
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x2
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x3
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x4
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg)
+Zg0 <- ZOSull(xg, range(X[, 2]), intKnots)
+
+
+beta <- t(as.matrix(sfit, "beta"))
+gamma0 <- t(as.matrix(sfit, "gamma0"))
+Zg0gamma0 <- Zg0 %*% gamma0
+
+fhatMCMC0 <- plogis(Xg[, 1:2] %*% beta[1:2, ] + Zg0gamma0)
+fhatMCMC1 <- plogis(Xg[, c(1:3, 15)] %*% beta[c(1:3, 15), ] + Zg0gamma0)
+fhatMCMC2 <- plogis(Xg[, c(1:2,6,18)] %*% beta[c(1:2,6,18), ] + Zg0gamma0)
+fhatMCMC3 <- plogis(Xg[, c(1:2,9,21)] %*% beta[c(1:2,9,21), ] + Zg0gamma0)
+fhatMCMC4 <- plogis(Xg[, c(1:2,12,24)] %*% beta[c(1:2,12,24), ] + Zg0gamma0)
+fhatMCMC5 <- plogis(Xg[, c(1:2,4,16)] %*% beta[c(1:2,4,16), ] + Zg0gamma0)
+fhatMCMC6 <- plogis(Xg[, c(1:2,7,19)] %*% beta[c(1:2,7,19), ] + Zg0gamma0)
+fhatMCMC7 <- plogis(Xg[, c(1:2,10,22)] %*% beta[c(1:2,10,22), ] + Zg0gamma0)
+fhatMCMC8 <- plogis(Xg[, c(1:2,13,25)] %*% beta[c(1:2,13,25), ] + Zg0gamma0)
+fhatMCMC9 <- plogis(Xg[, c(1:2,5,17)] %*% beta[c(1:2,5,17), ] + Zg0gamma0)
+fhatMCMC10 <- plogis(Xg[, c(1:2,8,20)] %*% beta[c(1:2,8,20), ] + Zg0gamma0)
+fhatMCMC11 <- plogis(Xg[, c(1:2,11,23)] %*% beta[c(1:2,11,23), ] + Zg0gamma0)
+fhatMCMC12 <- plogis(Xg[, c(1:2,14,26)] %*% beta[c(1:2,14,26), ] + Zg0gamma0)
+
+survMCMC0 <- colCumprods(1 - fhatMCMC0)
+survMCMC1 <- colCumprods(1 - fhatMCMC1)
+survMCMC2 <- colCumprods(1 - fhatMCMC2)
+survMCMC3 <- colCumprods(1 - fhatMCMC3)
+survMCMC4 <- colCumprods(1 - fhatMCMC4)
+survMCMC5 <- colCumprods(1 - fhatMCMC5)
+survMCMC6 <- colCumprods(1 - fhatMCMC6)
+survMCMC7 <- colCumprods(1 - fhatMCMC7)
+survMCMC8 <- colCumprods(1 - fhatMCMC8)
+survMCMC9 <- colCumprods(1 - fhatMCMC9)
+survMCMC10 <- colCumprods(1 - fhatMCMC10)
+survMCMC11 <- colCumprods(1 - fhatMCMC11)
+survMCMC12 <- colCumprods(1 - fhatMCMC12)
+
+aucMCMC0 <- colCumsums(survMCMC0*diff(c(0, xg)))
+aucMCMC1 <- colCumsums(survMCMC1*diff(c(0, xg)))
+aucMCMC2 <- colCumsums(survMCMC2*diff(c(0, xg)))
+aucMCMC3 <- colCumsums(survMCMC3*diff(c(0, xg)))
+aucMCMC4 <- colCumsums(survMCMC4*diff(c(0, xg)))
+aucMCMC5 <- colCumsums(survMCMC5*diff(c(0, xg)))
+aucMCMC6 <- colCumsums(survMCMC6*diff(c(0, xg)))
+aucMCMC7 <- colCumsums(survMCMC7*diff(c(0, xg)))
+aucMCMC8 <- colCumsums(survMCMC8*diff(c(0, xg)))
+aucMCMC9 <- colCumsums(survMCMC9*diff(c(0, xg)))
+aucMCMC10 <- colCumsums(survMCMC10*diff(c(0, xg)))
+aucMCMC11 <- colCumsums(survMCMC11*diff(c(0, xg)))
+aucMCMC12 <- colCumsums(survMCMC12*diff(c(0, xg)))
+
+diffaucMCMC1 <- aucMCMC0 - aucMCMC1
+diffaucMCMC2 <- aucMCMC0 - aucMCMC2
+diffaucMCMC3 <- aucMCMC0 - aucMCMC3
+diffaucMCMC4 <- aucMCMC0 - aucMCMC4
+diffaucMCMC5 <- aucMCMC0 - aucMCMC5
+diffaucMCMC6 <- aucMCMC0 - aucMCMC6
+diffaucMCMC7 <- aucMCMC0 - aucMCMC7
+diffaucMCMC8 <- aucMCMC0 - aucMCMC8
+diffaucMCMC9 <- aucMCMC0 - aucMCMC9
+diffaucMCMC10 <- aucMCMC0 - aucMCMC10
+diffaucMCMC11 <- aucMCMC0 - aucMCMC11
+diffaucMCMC12 <- aucMCMC0 - aucMCMC12
+
+surv0 <- apply(survMCMC0, 1, mean)
+survlo0 <- apply(survMCMC0, 1, quantile, 0.025)
+survhi0 <- apply(survMCMC0, 1, quantile, 0.975)
+surv1 <- apply(survMCMC1, 1, mean)
+survlo1 <- apply(survMCMC1, 1, quantile, 0.025)
+survhi1 <- apply(survMCMC1, 1, quantile, 0.975)
+surv2 <- apply(survMCMC2, 1, mean)
+survlo2 <- apply(survMCMC2, 1, quantile, 0.025)
+survhi2 <- apply(survMCMC2, 1, quantile, 0.975)
+surv3 <- apply(survMCMC3, 1, mean)
+survlo3 <- apply(survMCMC3, 1, quantile, 0.025)
+survhi3 <- apply(survMCMC3, 1, quantile, 0.975)
+surv4 <- apply(survMCMC4, 1, mean)
+survlo4 <- apply(survMCMC4, 1, quantile, 0.025)
+survhi4 <- apply(survMCMC4, 1, quantile, 0.975)
+surv5 <- apply(survMCMC5, 1, mean)
+survlo5 <- apply(survMCMC5, 1, quantile, 0.025)
+survhi5 <- apply(survMCMC5, 1, quantile, 0.975)
+surv6 <- apply(survMCMC6, 1, mean)
+survlo6 <- apply(survMCMC6, 1, quantile, 0.025)
+survhi6 <- apply(survMCMC6, 1, quantile, 0.975)
+surv7 <- apply(survMCMC7, 1, mean)
+survlo7 <- apply(survMCMC7, 1, quantile, 0.025)
+survhi7 <- apply(survMCMC7, 1, quantile, 0.975)
+surv8 <- apply(survMCMC8, 1, mean)
+survlo8 <- apply(survMCMC8, 1, quantile, 0.025)
+survhi8 <- apply(survMCMC8, 1, quantile, 0.975)
+surv9 <- apply(survMCMC9, 1, mean)
+survlo9 <- apply(survMCMC9, 1, quantile, 0.025)
+survhi9 <- apply(survMCMC9, 1, quantile, 0.975)
+surv10 <- apply(survMCMC10, 1, mean)
+survlo10 <- apply(survMCMC10, 1, quantile, 0.025)
+survhi10 <- apply(survMCMC10, 1, quantile, 0.975)
+surv11 <- apply(survMCMC11, 1, mean)
+survlo11 <- apply(survMCMC11, 1, quantile, 0.025)
+survhi11 <- apply(survMCMC11, 1, quantile, 0.975)
+surv12 <- apply(survMCMC12, 1, mean)
+survlo12 <- apply(survMCMC12, 1, quantile, 0.025)
+survhi12 <- apply(survMCMC12, 1, quantile, 0.975)
+
+auc0 <- apply(aucMCMC0, 1, mean)
+auclo0 <- apply(aucMCMC0, 1, quantile, 0.025)
+auchi0 <- apply(aucMCMC0, 1, quantile, 0.975)
+auc1 <- apply(aucMCMC1, 1, mean)
+auclo1 <- apply(aucMCMC1, 1, quantile, 0.025)
+auchi1 <- apply(aucMCMC1, 1, quantile, 0.975)
+auc2 <- apply(aucMCMC2, 1, mean)
+auclo2 <- apply(aucMCMC2, 1, quantile, 0.025)
+auchi2 <- apply(aucMCMC2, 1, quantile, 0.975)
+auc3 <- apply(aucMCMC3, 1, mean)
+auclo3 <- apply(aucMCMC3, 1, quantile, 0.025)
+auchi3 <- apply(aucMCMC3, 1, quantile, 0.975)
+auc4 <- apply(aucMCMC4, 1, mean)
+auclo4 <- apply(aucMCMC4, 1, quantile, 0.025)
+auchi4 <- apply(aucMCMC4, 1, quantile, 0.975)
+auc5 <- apply(aucMCMC5, 1, mean)
+auclo5 <- apply(aucMCMC5, 1, quantile, 0.025)
+auchi5 <- apply(aucMCMC5, 1, quantile, 0.975)
+auc6 <- apply(aucMCMC6, 1, mean)
+auclo6 <- apply(aucMCMC6, 1, quantile, 0.025)
+auchi6 <- apply(aucMCMC6, 1, quantile, 0.975)
+auc7 <- apply(aucMCMC7, 1, mean)
+auclo7 <- apply(aucMCMC7, 1, quantile, 0.025)
+auchi7 <- apply(aucMCMC7, 1, quantile, 0.975)
+auc8 <- apply(aucMCMC8, 1, mean)
+auclo8 <- apply(aucMCMC8, 1, quantile, 0.025)
+auchi8 <- apply(aucMCMC8, 1, quantile, 0.975)
+auc9 <- apply(aucMCMC9, 1, mean)
+auclo9 <- apply(aucMCMC9, 1, quantile, 0.025)
+auchi9 <- apply(aucMCMC9, 1, quantile, 0.975)
+auc10 <- apply(aucMCMC10, 1, mean)
+auclo10 <- apply(aucMCMC10, 1, quantile, 0.025)
+auchi10 <- apply(aucMCMC10, 1, quantile, 0.975)
+auc11 <- apply(aucMCMC11, 1, mean)
+auclo11 <- apply(aucMCMC11, 1, quantile, 0.025)
+auchi11 <- apply(aucMCMC11, 1, quantile, 0.975)
+auc12 <- apply(aucMCMC12, 1, mean)
+auclo12 <- apply(aucMCMC12, 1, quantile, 0.025)
+auchi12 <- apply(aucMCMC12, 1, quantile, 0.975)
+
+diffauc1 <- apply(diffaucMCMC1, 1, mean)
+diffauclo1 <- apply(diffaucMCMC1, 1, quantile, 0.025)
+diffauchi1 <- apply(diffaucMCMC1, 1, quantile, 0.975)
+diffauc2 <- apply(diffaucMCMC2, 1, mean)
+diffauclo2 <- apply(diffaucMCMC2, 1, quantile, 0.025)
+diffauchi2 <- apply(diffaucMCMC2, 1, quantile, 0.975)
+diffauc3 <- apply(diffaucMCMC3, 1, mean)
+diffauclo3 <- apply(diffaucMCMC3, 1, quantile, 0.025)
+diffauchi3 <- apply(diffaucMCMC3, 1, quantile, 0.975)
+diffauc4 <- apply(diffaucMCMC4, 1, mean)
+diffauclo4 <- apply(diffaucMCMC4, 1, quantile, 0.025)
+diffauchi4 <- apply(diffaucMCMC4, 1, quantile, 0.975)
+diffauc5 <- apply(diffaucMCMC5, 1, mean)
+diffauclo5 <- apply(diffaucMCMC5, 1, quantile, 0.025)
+diffauchi5 <- apply(diffaucMCMC5, 1, quantile, 0.975)
+diffauc6 <- apply(diffaucMCMC6, 1, mean)
+diffauclo6 <- apply(diffaucMCMC6, 1, quantile, 0.025)
+diffauchi6 <- apply(diffaucMCMC6, 1, quantile, 0.975)
+diffauc7 <- apply(diffaucMCMC7, 1, mean)
+diffauclo7 <- apply(diffaucMCMC7, 1, quantile, 0.025)
+diffauchi7 <- apply(diffaucMCMC7, 1, quantile, 0.975)
+diffauc8 <- apply(diffaucMCMC8, 1, mean)
+diffauclo8 <- apply(diffaucMCMC8, 1, quantile, 0.025)
+diffauchi8 <- apply(diffaucMCMC8, 1, quantile, 0.975)
+diffauc9 <- apply(diffaucMCMC9, 1, mean)
+diffauclo9 <- apply(diffaucMCMC9, 1, quantile, 0.025)
+diffauchi9 <- apply(diffaucMCMC9, 1, quantile, 0.975)
+diffauc10 <- apply(diffaucMCMC10, 1, mean)
+diffauclo10 <- apply(diffaucMCMC10, 1, quantile, 0.025)
+diffauchi10 <- apply(diffaucMCMC10, 1, quantile, 0.975)
+diffauc11 <- apply(diffaucMCMC11, 1, mean)
+diffauclo11 <- apply(diffaucMCMC11, 1, quantile, 0.025)
+diffauchi11 <- apply(diffaucMCMC11, 1, quantile, 0.975)
+diffauc12 <- apply(diffaucMCMC12, 1, mean)
+diffauclo12 <- apply(diffaucMCMC12, 1, quantile, 0.025)
+diffauchi12 <- apply(diffaucMCMC12, 1, quantile, 0.975)
+
+tab <- rbind(
+  "Int 1" = quantile(diffaucMCMC1[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 2" = quantile(diffaucMCMC2[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 3" = quantile(diffaucMCMC3[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 4" = quantile(diffaucMCMC4[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 5" = quantile(diffaucMCMC5[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 6" = quantile(diffaucMCMC6[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 7" = quantile(diffaucMCMC7[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 8" = quantile(diffaucMCMC8[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 9" = quantile(diffaucMCMC9[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 10" = quantile(diffaucMCMC10[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 11" = quantile(diffaucMCMC11[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 12" = quantile(diffaucMCMC12[57, ], probs = c(0.025, 0.5, 0.975))
+)
+kable(tab, caption = "Relative RMST(57)", col.names = c("2.5%", "50.0%", "97.5%"),
+      booktabs = TRUE, digits = 1) %>%
+  kable_styling()
+```
+
+
+```{r fig.cap = "Survival curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo1[xg>=15], rev(survhi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo5[xg>=29], rev(survhi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo9[xg>=36], rev(survhi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo2[xg>=15], rev(survhi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo6[xg>=29], rev(survhi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo10[xg>=36], rev(survhi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo3[xg>=15], rev(survhi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo7[xg>=29], rev(survhi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo11[xg>=36], rev(survhi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo4[xg>=15], rev(survhi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo8[xg>=29], rev(survhi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo12[xg>=36], rev(survhi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+
+```{r fig.cap = "RMST curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo1[xg>=15], rev(auchi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo5[xg>=29], rev(auchi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo9[xg>=36], rev(auchi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo2[xg>=15], rev(auchi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo6[xg>=29], rev(auchi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo10[xg>=36], rev(auchi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo3[xg>=15], rev(auchi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo7[xg>=29], rev(auchi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo11[xg>=36], rev(auchi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo4[xg>=15], rev(auchi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo8[xg>=29], rev(auchi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo12[xg>=36], rev(auchi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+
+
+```{r fig.cap = "Relative (to baseline) RMST curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo1[xg>=15], rev(diffauchi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo5[xg>=29], rev(diffauchi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo9[xg>=36], rev(diffauchi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo2[xg>=15], rev(diffauchi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo6[xg>=29], rev(diffauchi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo10[xg>=36], rev(diffauchi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo3[xg>=15], rev(diffauchi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo7[xg>=29], rev(diffauchi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo11[xg>=36], rev(diffauchi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo4[xg>=15], rev(diffauchi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo8[xg>=29], rev(diffauchi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo12[xg>=36], rev(diffauchi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+\clearpage
+
+## Model 2
+
+```{r, results='hide'}
+smod <- "
+data {
+  int N;
+  int ncZ;
+  int ncX;
+  int y[N];
+  int n[N];
+  matrix[N, ncX] X;
+  matrix[N, ncZ] Z0;
+  matrix[N, ncZ] Z1;
+  matrix[N, ncZ] Z2;
+  matrix[N, ncZ] Z3;
+}
+
+parameters {
+  vector[ncX] beta;
+  vector[ncZ] gamma0;
+  vector[ncZ] gamma1;
+  vector[ncZ] gamma2;
+  vector[ncZ] gamma3;
+  real<lower=0> tau0;
+  real<lower=0> tau1;
+  real<lower=0> tau2;
+  real<lower=0> tau3;
+}
+
+model {
+  beta ~ normal(0, 5);
+  gamma0 ~ normal(0, tau0);
+  gamma1 ~ normal(0, tau1);
+  gamma2 ~ normal(0, tau2);
+  gamma3 ~ normal(0, tau3);
+  tau0 ~ cauchy(0, 2);
+  tau1 ~ cauchy(0, 2);
+  tau2 ~ cauchy(0, 2);
+  tau3 ~ cauchy(0, 2);
+  y ~ binomial_logit(n, X*beta + Z0*gamma0 + Z1*gamma1 + Z2*gamma2 + Z3*gamma3);
+}
+"
+
+y <- Data_agg$y
+n <- Data_agg$n
+X <- model.matrix( ~ period * factor(w) : factor(x), data = Data_agg, 
+                   contrasts.arg = list(`factor(w)` = "contr.treatment", `factor(x)` = "contr.treatment"))
+X <- X[, !grepl("factor\\(w\\)0|factor\\(x\\)0", colnames(X))]
+
+nknots <- 20
+intKnots <- quantile(unique(X[,2]),seq(0,1,length=(nknots+2))[-c(1,(nknots+2))])
+Z0 <- ZOSull(X[, 2], range(X[, 2]), intKnots)
+Z1 <- Data_agg$w1 * Z0
+Z2 <- Data_agg$w2 * Z0
+Z3 <- Data_agg$w3 * Z0
+allData <- list(N = length(y), ncZ = ncol(Z0), ncX = ncol(X),
+                y = y, n = n, X = X, Z0 = Z0, Z1 = Z1, Z2 = Z2, Z3 = Z3)
+
+ss <- stan_model(model_code = smod)
+nWarm <- 1000 ; nKept <- 1000 ; nThin <- 1
+invisible(sfit <- sampling(
+  ss,
+  data = allData,
+  warmup = nWarm, iter = (nWarm + nKept),
+  chains = 1, thin = nThin, refresh = 0))
+draws <- extract(sfit, permuted = FALSE)
+```
+
+
+
+```{r, fig.height=7, fig.cap="Shared baseline curve, intervention x timing specific constant effect."}
+xg <- seq(1, 60, length.out = 60)
+Xg <- cbind(1, xg, 
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x1
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x2
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x3
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x4
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg)
+Zg0 <- ZOSull(xg, range(X[, 2]), intKnots)
+Zg1 <- (xg >= 15) * Zg0
+Zg2 <- (xg >= 29) * Zg0
+Zg3 <- (xg >= 36) * Zg0
+
+beta <- t(as.matrix(sfit, "beta"))
+gamma0 <- t(as.matrix(sfit, "gamma0"))
+gamma1 <- t(as.matrix(sfit, "gamma1"))
+gamma2 <- t(as.matrix(sfit, "gamma2"))
+gamma3 <- t(as.matrix(sfit, "gamma3"))
+Zg0gamma0 <- Zg0 %*% gamma0
+Zg1gamma1 <- Zg1 %*% gamma1
+Zg2gamma2 <- Zg2 %*% gamma2
+Zg3gamma3 <- Zg3 %*% gamma3
+
+fhatMCMC0 <- plogis(Xg[, 1:2] %*% beta[1:2, ] + Zg0gamma0)
+fhatMCMC1 <- plogis(Xg[, c(1:3, 15)] %*% beta[c(1:3, 15), ] + Zg0gamma0 + Zg1gamma1)
+fhatMCMC2 <- plogis(Xg[, c(1:2,6,18)] %*% beta[c(1:2,6,18), ] + Zg0gamma0 + Zg1gamma1)
+fhatMCMC3 <- plogis(Xg[, c(1:2,9,21)] %*% beta[c(1:2,9,21), ] + Zg0gamma0 + Zg1gamma1)
+fhatMCMC4 <- plogis(Xg[, c(1:2,12,24)] %*% beta[c(1:2,12,24), ] + Zg0gamma0 + Zg1gamma1)
+fhatMCMC5 <- plogis(Xg[, c(1:2,4,16)] %*% beta[c(1:2,4,16), ] + Zg0gamma0 + Zg2gamma2)
+fhatMCMC6 <- plogis(Xg[, c(1:2,7,19)] %*% beta[c(1:2,7,19), ] + Zg0gamma0 + Zg2gamma2)
+fhatMCMC7 <- plogis(Xg[, c(1:2,10,22)] %*% beta[c(1:2,10,22), ] + Zg0gamma0 + Zg2gamma2)
+fhatMCMC8 <- plogis(Xg[, c(1:2,13,25)] %*% beta[c(1:2,13,25), ] + Zg0gamma0 + Zg2gamma2)
+fhatMCMC9 <- plogis(Xg[, c(1:2,5,17)] %*% beta[c(1:2,5,17), ] + Zg0gamma0 + Zg3gamma3)
+fhatMCMC10 <- plogis(Xg[, c(1:2,8,20)] %*% beta[c(1:2,8,20), ] + Zg0gamma0 + Zg3gamma3)
+fhatMCMC11 <- plogis(Xg[, c(1:2,11,23)] %*% beta[c(1:2,11,23), ] + Zg0gamma0 + Zg3gamma3)
+fhatMCMC12 <- plogis(Xg[, c(1:2,14,26)] %*% beta[c(1:2,14,26), ] + Zg0gamma0 + Zg3gamma3)
+
+survMCMC0 <- colCumprods(1 - fhatMCMC0)
+survMCMC1 <- colCumprods(1 - fhatMCMC1)
+survMCMC2 <- colCumprods(1 - fhatMCMC2)
+survMCMC3 <- colCumprods(1 - fhatMCMC3)
+survMCMC4 <- colCumprods(1 - fhatMCMC4)
+survMCMC5 <- colCumprods(1 - fhatMCMC5)
+survMCMC6 <- colCumprods(1 - fhatMCMC6)
+survMCMC7 <- colCumprods(1 - fhatMCMC7)
+survMCMC8 <- colCumprods(1 - fhatMCMC8)
+survMCMC9 <- colCumprods(1 - fhatMCMC9)
+survMCMC10 <- colCumprods(1 - fhatMCMC10)
+survMCMC11 <- colCumprods(1 - fhatMCMC11)
+survMCMC12 <- colCumprods(1 - fhatMCMC12)
+
+aucMCMC0 <- colCumsums(survMCMC0*diff(c(0, xg)))
+aucMCMC1 <- colCumsums(survMCMC1*diff(c(0, xg)))
+aucMCMC2 <- colCumsums(survMCMC2*diff(c(0, xg)))
+aucMCMC3 <- colCumsums(survMCMC3*diff(c(0, xg)))
+aucMCMC4 <- colCumsums(survMCMC4*diff(c(0, xg)))
+aucMCMC5 <- colCumsums(survMCMC5*diff(c(0, xg)))
+aucMCMC6 <- colCumsums(survMCMC6*diff(c(0, xg)))
+aucMCMC7 <- colCumsums(survMCMC7*diff(c(0, xg)))
+aucMCMC8 <- colCumsums(survMCMC8*diff(c(0, xg)))
+aucMCMC9 <- colCumsums(survMCMC9*diff(c(0, xg)))
+aucMCMC10 <- colCumsums(survMCMC10*diff(c(0, xg)))
+aucMCMC11 <- colCumsums(survMCMC11*diff(c(0, xg)))
+aucMCMC12 <- colCumsums(survMCMC12*diff(c(0, xg)))
+
+diffaucMCMC1 <- aucMCMC0 - aucMCMC1
+diffaucMCMC2 <- aucMCMC0 - aucMCMC2
+diffaucMCMC3 <- aucMCMC0 - aucMCMC3
+diffaucMCMC4 <- aucMCMC0 - aucMCMC4
+diffaucMCMC5 <- aucMCMC0 - aucMCMC5
+diffaucMCMC6 <- aucMCMC0 - aucMCMC6
+diffaucMCMC7 <- aucMCMC0 - aucMCMC7
+diffaucMCMC8 <- aucMCMC0 - aucMCMC8
+diffaucMCMC9 <- aucMCMC0 - aucMCMC9
+diffaucMCMC10 <- aucMCMC0 - aucMCMC10
+diffaucMCMC11 <- aucMCMC0 - aucMCMC11
+diffaucMCMC12 <- aucMCMC0 - aucMCMC12
+
+surv0 <- apply(survMCMC0, 1, mean)
+survlo0 <- apply(survMCMC0, 1, quantile, 0.025)
+survhi0 <- apply(survMCMC0, 1, quantile, 0.975)
+surv1 <- apply(survMCMC1, 1, mean)
+survlo1 <- apply(survMCMC1, 1, quantile, 0.025)
+survhi1 <- apply(survMCMC1, 1, quantile, 0.975)
+surv2 <- apply(survMCMC2, 1, mean)
+survlo2 <- apply(survMCMC2, 1, quantile, 0.025)
+survhi2 <- apply(survMCMC2, 1, quantile, 0.975)
+surv3 <- apply(survMCMC3, 1, mean)
+survlo3 <- apply(survMCMC3, 1, quantile, 0.025)
+survhi3 <- apply(survMCMC3, 1, quantile, 0.975)
+surv4 <- apply(survMCMC4, 1, mean)
+survlo4 <- apply(survMCMC4, 1, quantile, 0.025)
+survhi4 <- apply(survMCMC4, 1, quantile, 0.975)
+surv5 <- apply(survMCMC5, 1, mean)
+survlo5 <- apply(survMCMC5, 1, quantile, 0.025)
+survhi5 <- apply(survMCMC5, 1, quantile, 0.975)
+surv6 <- apply(survMCMC6, 1, mean)
+survlo6 <- apply(survMCMC6, 1, quantile, 0.025)
+survhi6 <- apply(survMCMC6, 1, quantile, 0.975)
+surv7 <- apply(survMCMC7, 1, mean)
+survlo7 <- apply(survMCMC7, 1, quantile, 0.025)
+survhi7 <- apply(survMCMC7, 1, quantile, 0.975)
+surv8 <- apply(survMCMC8, 1, mean)
+survlo8 <- apply(survMCMC8, 1, quantile, 0.025)
+survhi8 <- apply(survMCMC8, 1, quantile, 0.975)
+surv9 <- apply(survMCMC9, 1, mean)
+survlo9 <- apply(survMCMC9, 1, quantile, 0.025)
+survhi9 <- apply(survMCMC9, 1, quantile, 0.975)
+surv10 <- apply(survMCMC10, 1, mean)
+survlo10 <- apply(survMCMC10, 1, quantile, 0.025)
+survhi10 <- apply(survMCMC10, 1, quantile, 0.975)
+surv11 <- apply(survMCMC11, 1, mean)
+survlo11 <- apply(survMCMC11, 1, quantile, 0.025)
+survhi11 <- apply(survMCMC11, 1, quantile, 0.975)
+surv12 <- apply(survMCMC12, 1, mean)
+survlo12 <- apply(survMCMC12, 1, quantile, 0.025)
+survhi12 <- apply(survMCMC12, 1, quantile, 0.975)
+
+auc0 <- apply(aucMCMC0, 1, mean)
+auclo0 <- apply(aucMCMC0, 1, quantile, 0.025)
+auchi0 <- apply(aucMCMC0, 1, quantile, 0.975)
+auc1 <- apply(aucMCMC1, 1, mean)
+auclo1 <- apply(aucMCMC1, 1, quantile, 0.025)
+auchi1 <- apply(aucMCMC1, 1, quantile, 0.975)
+auc2 <- apply(aucMCMC2, 1, mean)
+auclo2 <- apply(aucMCMC2, 1, quantile, 0.025)
+auchi2 <- apply(aucMCMC2, 1, quantile, 0.975)
+auc3 <- apply(aucMCMC3, 1, mean)
+auclo3 <- apply(aucMCMC3, 1, quantile, 0.025)
+auchi3 <- apply(aucMCMC3, 1, quantile, 0.975)
+auc4 <- apply(aucMCMC4, 1, mean)
+auclo4 <- apply(aucMCMC4, 1, quantile, 0.025)
+auchi4 <- apply(aucMCMC4, 1, quantile, 0.975)
+auc5 <- apply(aucMCMC5, 1, mean)
+auclo5 <- apply(aucMCMC5, 1, quantile, 0.025)
+auchi5 <- apply(aucMCMC5, 1, quantile, 0.975)
+auc6 <- apply(aucMCMC6, 1, mean)
+auclo6 <- apply(aucMCMC6, 1, quantile, 0.025)
+auchi6 <- apply(aucMCMC6, 1, quantile, 0.975)
+auc7 <- apply(aucMCMC7, 1, mean)
+auclo7 <- apply(aucMCMC7, 1, quantile, 0.025)
+auchi7 <- apply(aucMCMC7, 1, quantile, 0.975)
+auc8 <- apply(aucMCMC8, 1, mean)
+auclo8 <- apply(aucMCMC8, 1, quantile, 0.025)
+auchi8 <- apply(aucMCMC8, 1, quantile, 0.975)
+auc9 <- apply(aucMCMC9, 1, mean)
+auclo9 <- apply(aucMCMC9, 1, quantile, 0.025)
+auchi9 <- apply(aucMCMC9, 1, quantile, 0.975)
+auc10 <- apply(aucMCMC10, 1, mean)
+auclo10 <- apply(aucMCMC10, 1, quantile, 0.025)
+auchi10 <- apply(aucMCMC10, 1, quantile, 0.975)
+auc11 <- apply(aucMCMC11, 1, mean)
+auclo11 <- apply(aucMCMC11, 1, quantile, 0.025)
+auchi11 <- apply(aucMCMC11, 1, quantile, 0.975)
+auc12 <- apply(aucMCMC12, 1, mean)
+auclo12 <- apply(aucMCMC12, 1, quantile, 0.025)
+auchi12 <- apply(aucMCMC12, 1, quantile, 0.975)
+
+diffauc1 <- apply(diffaucMCMC1, 1, mean)
+diffauclo1 <- apply(diffaucMCMC1, 1, quantile, 0.025)
+diffauchi1 <- apply(diffaucMCMC1, 1, quantile, 0.975)
+diffauc2 <- apply(diffaucMCMC2, 1, mean)
+diffauclo2 <- apply(diffaucMCMC2, 1, quantile, 0.025)
+diffauchi2 <- apply(diffaucMCMC2, 1, quantile, 0.975)
+diffauc3 <- apply(diffaucMCMC3, 1, mean)
+diffauclo3 <- apply(diffaucMCMC3, 1, quantile, 0.025)
+diffauchi3 <- apply(diffaucMCMC3, 1, quantile, 0.975)
+diffauc4 <- apply(diffaucMCMC4, 1, mean)
+diffauclo4 <- apply(diffaucMCMC4, 1, quantile, 0.025)
+diffauchi4 <- apply(diffaucMCMC4, 1, quantile, 0.975)
+diffauc5 <- apply(diffaucMCMC5, 1, mean)
+diffauclo5 <- apply(diffaucMCMC5, 1, quantile, 0.025)
+diffauchi5 <- apply(diffaucMCMC5, 1, quantile, 0.975)
+diffauc6 <- apply(diffaucMCMC6, 1, mean)
+diffauclo6 <- apply(diffaucMCMC6, 1, quantile, 0.025)
+diffauchi6 <- apply(diffaucMCMC6, 1, quantile, 0.975)
+diffauc7 <- apply(diffaucMCMC7, 1, mean)
+diffauclo7 <- apply(diffaucMCMC7, 1, quantile, 0.025)
+diffauchi7 <- apply(diffaucMCMC7, 1, quantile, 0.975)
+diffauc8 <- apply(diffaucMCMC8, 1, mean)
+diffauclo8 <- apply(diffaucMCMC8, 1, quantile, 0.025)
+diffauchi8 <- apply(diffaucMCMC8, 1, quantile, 0.975)
+diffauc9 <- apply(diffaucMCMC9, 1, mean)
+diffauclo9 <- apply(diffaucMCMC9, 1, quantile, 0.025)
+diffauchi9 <- apply(diffaucMCMC9, 1, quantile, 0.975)
+diffauc10 <- apply(diffaucMCMC10, 1, mean)
+diffauclo10 <- apply(diffaucMCMC10, 1, quantile, 0.025)
+diffauchi10 <- apply(diffaucMCMC10, 1, quantile, 0.975)
+diffauc11 <- apply(diffaucMCMC11, 1, mean)
+diffauclo11 <- apply(diffaucMCMC11, 1, quantile, 0.025)
+diffauchi11 <- apply(diffaucMCMC11, 1, quantile, 0.975)
+diffauc12 <- apply(diffaucMCMC12, 1, mean)
+diffauclo12 <- apply(diffaucMCMC12, 1, quantile, 0.025)
+diffauchi12 <- apply(diffaucMCMC12, 1, quantile, 0.975)
+
+tab <- rbind(
+  "Int 1" = quantile(diffaucMCMC1[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 2" = quantile(diffaucMCMC2[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 3" = quantile(diffaucMCMC3[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 4" = quantile(diffaucMCMC4[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 5" = quantile(diffaucMCMC5[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 6" = quantile(diffaucMCMC6[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 7" = quantile(diffaucMCMC7[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 8" = quantile(diffaucMCMC8[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 9" = quantile(diffaucMCMC9[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 10" = quantile(diffaucMCMC10[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 11" = quantile(diffaucMCMC11[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 12" = quantile(diffaucMCMC12[57, ], probs = c(0.025, 0.5, 0.975))
+)
+kable(tab, caption = "Relative RMST(57)", col.names = c("2.5%", "50.0%", "97.5%"),
+      booktabs = TRUE, digits = 1) %>%
+  kable_styling()
+```
+
+
+```{r fig.cap = "Survival curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo1[xg>=15], rev(survhi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo5[xg>=29], rev(survhi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo9[xg>=36], rev(survhi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo2[xg>=15], rev(survhi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo6[xg>=29], rev(survhi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo10[xg>=36], rev(survhi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo3[xg>=15], rev(survhi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo7[xg>=29], rev(survhi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo11[xg>=36], rev(survhi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo4[xg>=15], rev(survhi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo8[xg>=29], rev(survhi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo12[xg>=36], rev(survhi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+
+```{r fig.cap = "RMST curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo1[xg>=15], rev(auchi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo5[xg>=29], rev(auchi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo9[xg>=36], rev(auchi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo2[xg>=15], rev(auchi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo6[xg>=29], rev(auchi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo10[xg>=36], rev(auchi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo3[xg>=15], rev(auchi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo7[xg>=29], rev(auchi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo11[xg>=36], rev(auchi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo4[xg>=15], rev(auchi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo8[xg>=29], rev(auchi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo12[xg>=36], rev(auchi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+
+
+```{r fig.cap = "Relative (to baseline) RMST curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo1[xg>=15], rev(diffauchi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo5[xg>=29], rev(diffauchi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo9[xg>=36], rev(diffauchi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo2[xg>=15], rev(diffauchi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo6[xg>=29], rev(diffauchi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo10[xg>=36], rev(diffauchi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo3[xg>=15], rev(diffauchi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo7[xg>=29], rev(diffauchi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo11[xg>=36], rev(diffauchi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo4[xg>=15], rev(diffauchi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo8[xg>=29], rev(diffauchi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo12[xg>=36], rev(diffauchi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+\clearpage
+
+## Model 3
+
+
+```{r, results='hide'}
+smod <- "
+data {
+  int N;
+  int ncZ;
+  int ncX;
+  int y[N];
+  int n[N];
+  matrix[N, ncX] X;
+  matrix[N, ncZ] Z0;
+  matrix[N, ncZ] Z1;
+  matrix[N, ncZ] Z2;
+  matrix[N, ncZ] Z3;
+  matrix[N, ncZ] Z4;
+  matrix[N, ncZ] Z5;
+  matrix[N, ncZ] Z6;
+  matrix[N, ncZ] Z7;
+  matrix[N, ncZ] Z8;
+  matrix[N, ncZ] Z9;
+  matrix[N, ncZ] Z10;
+  matrix[N, ncZ] Z11;
+  matrix[N, ncZ] Z12;
+}
+
+parameters {
+  vector[ncX] beta;
+  vector[ncZ] gamma0;
+  vector[ncZ] gamma1;
+  vector[ncZ] gamma2;
+  vector[ncZ] gamma3;
+  vector[ncZ] gamma4;
+  vector[ncZ] gamma5;
+  vector[ncZ] gamma6;
+  vector[ncZ] gamma7;
+  vector[ncZ] gamma8;
+  vector[ncZ] gamma9;
+  vector[ncZ] gamma10;
+  vector[ncZ] gamma11;
+  vector[ncZ] gamma12;
+  real<lower=0> tau0;
+  real<lower=0> tau1;
+  real<lower=0> tau2;
+  real<lower=0> tau3;
+  real<lower=0> tau4;
+  real<lower=0> tau5;
+  real<lower=0> tau6;
+  real<lower=0> tau7;
+  real<lower=0> tau8;
+  real<lower=0> tau9;
+  real<lower=0> tau10;
+  real<lower=0> tau11;
+  real<lower=0> tau12;
+}
+
+model {
+  beta ~ normal(0, 5);
+  gamma0 ~ normal(0, tau0);
+  gamma1 ~ normal(0, tau1);
+  gamma2 ~ normal(0, tau2);
+  gamma3 ~ normal(0, tau3);
+  gamma4 ~ normal(0, tau4);
+  gamma5 ~ normal(0, tau5);
+  gamma6 ~ normal(0, tau6);
+  gamma7 ~ normal(0, tau7);
+  gamma8 ~ normal(0, tau8);
+  gamma9 ~ normal(0, tau9);
+  gamma10 ~ normal(0, tau10);
+  gamma11 ~ normal(0, tau11);
+  gamma12 ~ normal(0, tau12);
+  tau0 ~ cauchy(0, 2);
+  tau1 ~ cauchy(0, 2);
+  tau2 ~ cauchy(0, 2);
+  tau3 ~ cauchy(0, 2);
+  tau4 ~ cauchy(0, 2);
+  tau5 ~ cauchy(0, 2);
+  tau6 ~ cauchy(0, 2);
+  tau7 ~ cauchy(0, 2);
+  tau8 ~ cauchy(0, 2);
+  tau9 ~ cauchy(0, 2);
+  tau10 ~ cauchy(0, 2);
+  tau11 ~ cauchy(0, 2);
+  tau12 ~ cauchy(0, 2);
+  y ~ binomial_logit(n, X*beta + Z0*gamma0 + Z1*gamma1 + Z2*gamma2 + Z3*gamma3 +
+                        Z4*gamma4 + Z5*gamma5 + Z6*gamma6 + Z7*gamma7 + Z8*gamma8 +
+                        Z9*gamma9 + Z10*gamma10 + Z11*gamma11 + Z12*gamma12);
+}
+"
+
+y <- Data_agg$y
+n <- Data_agg$n
+X <- model.matrix( ~ period * factor(w) : factor(x), data = Data_agg, 
+                   contrasts.arg = list(`factor(w)` = "contr.treatment", `factor(x)` = "contr.treatment"))
+X <- X[, !grepl("factor\\(w\\)0|factor\\(x\\)0", colnames(X))]
+
+nknots <- 10
+intKnots <- quantile(unique(X[,2]),seq(0,1,length=(nknots+2))[-c(1,(nknots+2))])
+Z0 <- ZOSull(X[, 2], range(X[, 2]), intKnots)
+Z1 <- (Data_agg$x == 1) * Data_agg$w1 * Z0
+Z2 <- (Data_agg$x == 2) * Data_agg$w1 * Z0
+Z3 <- (Data_agg$x == 3) * Data_agg$w1 * Z0
+Z4 <- (Data_agg$x == 4) * Data_agg$w1 * Z0
+Z5 <- (Data_agg$x == 1) * Data_agg$w2 * Z0
+Z6 <- (Data_agg$x == 2) * Data_agg$w2 * Z0
+Z7 <- (Data_agg$x == 3) * Data_agg$w2 * Z0
+Z8 <- (Data_agg$x == 4) * Data_agg$w2 * Z0
+Z9 <- (Data_agg$x == 1) * Data_agg$w3 * Z0
+Z10 <- (Data_agg$x == 2) * Data_agg$w3 * Z0
+Z11 <- (Data_agg$x == 3) * Data_agg$w3 * Z0
+Z12 <- (Data_agg$x == 4) * Data_agg$w3 * Z0
+
+allData <- list(N = length(y), ncZ = ncol(Z0), ncX = ncol(X),
+                y = y, n = n, X = X, Z0 = Z0, Z1 = Z1, Z2 = Z2, Z3 = Z3,
+                Z4 = Z4, Z5 = Z5, Z6 = Z6, Z7 = Z7, Z8 = Z8, Z9 = Z9,
+                Z10 = Z10, Z11 = Z11, Z12 = Z12)
+
+ss <- stan_model(model_code = smod)
+nWarm <- 500 ; nKept <- 1000 ; nThin <- 1
+invisible(sfit <- sampling(
+  ss,
+  data = allData,
+  warmup = nWarm, iter = (nWarm + nKept),
+  chains = 1, thin = nThin, refresh = 0, control = list(max_treedepth = 10)))
+draws <- extract(sfit, permuted = FALSE)
+```
+
+
+```{r}
+xg <- seq(1, 60, length.out = 60)
+Xg <- cbind(1, xg, 
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x1
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x2
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x3
+            (xg >= 15), (xg >= 29), (xg >= 36), # w by x4
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg,
+            (xg >= 15)*xg, (xg >= 29)*xg, (xg >= 36)*xg)
+Zg0 <- ZOSull(xg, range(X[, 2]), intKnots)
+Zg1 <- (xg >= 15) * Zg0
+Zg2 <- (xg >= 29) * Zg0
+Zg3 <- (xg >= 36) * Zg0
+
+beta <- t(as.matrix(sfit, "beta"))
+gamma0 <- t(as.matrix(sfit, "gamma0"))
+gamma1 <- t(as.matrix(sfit, "gamma1"))
+gamma2 <- t(as.matrix(sfit, "gamma2"))
+gamma3 <- t(as.matrix(sfit, "gamma3"))
+gamma4 <- t(as.matrix(sfit, "gamma4"))
+gamma5 <- t(as.matrix(sfit, "gamma5"))
+gamma6 <- t(as.matrix(sfit, "gamma6"))
+gamma7 <- t(as.matrix(sfit, "gamma7"))
+gamma8 <- t(as.matrix(sfit, "gamma8"))
+gamma9 <- t(as.matrix(sfit, "gamma9"))
+gamma10 <- t(as.matrix(sfit, "gamma10"))
+gamma11 <- t(as.matrix(sfit, "gamma11"))
+gamma12 <- t(as.matrix(sfit, "gamma12"))
+
+Zg0gamma0 <- Zg0 %*% gamma0
+
+fhatMCMC0 <- plogis(Xg[, 1:2] %*% beta[1:2, ] + Zg0gamma0)
+fhatMCMC1 <- plogis(Xg[, c(1:3, 15)] %*% beta[c(1:3, 15), ] + Zg0gamma0 + Zg1 %*% gamma1)
+fhatMCMC2 <- plogis(Xg[, c(1:2,6,18)] %*% beta[c(1:2,6,18), ] + Zg0gamma0 + Zg1 %*% gamma2)
+fhatMCMC3 <- plogis(Xg[, c(1:2,9,21)] %*% beta[c(1:2,9,21), ] + Zg0gamma0 + Zg1 %*% gamma3)
+fhatMCMC4 <- plogis(Xg[, c(1:2,12,24)] %*% beta[c(1:2,12,24), ] + Zg0gamma0 + Zg1 %*% gamma4)
+fhatMCMC5 <- plogis(Xg[, c(1:2,4,16)] %*% beta[c(1:2,4,16), ] + Zg0gamma0 + Zg2 %*% gamma5)
+fhatMCMC6 <- plogis(Xg[, c(1:2,7,19)] %*% beta[c(1:2,7,19), ] + Zg0gamma0 + Zg2 %*% gamma6)
+fhatMCMC7 <- plogis(Xg[, c(1:2,10,22)] %*% beta[c(1:2,10,22), ] + Zg0gamma0 + Zg2 %*% gamma7)
+fhatMCMC8 <- plogis(Xg[, c(1:2,13,25)] %*% beta[c(1:2,13,25), ] + Zg0gamma0 + Zg2 %*% gamma8)
+fhatMCMC9 <- plogis(Xg[, c(1:2,5,17)] %*% beta[c(1:2,5,17), ] + Zg0gamma0 + Zg3 %*% gamma9)
+fhatMCMC10 <- plogis(Xg[, c(1:2,8,20)] %*% beta[c(1:2,8,20), ] + Zg0gamma0 + Zg3 %*% gamma10)
+fhatMCMC11 <- plogis(Xg[, c(1:2,11,23)] %*% beta[c(1:2,11,23), ] + Zg0gamma0 + Zg3 %*% gamma11)
+fhatMCMC12 <- plogis(Xg[, c(1:2,14,26)] %*% beta[c(1:2,14,26), ] + Zg0gamma0 + Zg3 %*% gamma12)
+
+survMCMC0 <- colCumprods(1 - fhatMCMC0)
+survMCMC1 <- colCumprods(1 - fhatMCMC1)
+survMCMC2 <- colCumprods(1 - fhatMCMC2)
+survMCMC3 <- colCumprods(1 - fhatMCMC3)
+survMCMC4 <- colCumprods(1 - fhatMCMC4)
+survMCMC5 <- colCumprods(1 - fhatMCMC5)
+survMCMC6 <- colCumprods(1 - fhatMCMC6)
+survMCMC7 <- colCumprods(1 - fhatMCMC7)
+survMCMC8 <- colCumprods(1 - fhatMCMC8)
+survMCMC9 <- colCumprods(1 - fhatMCMC9)
+survMCMC10 <- colCumprods(1 - fhatMCMC10)
+survMCMC11 <- colCumprods(1 - fhatMCMC11)
+survMCMC12 <- colCumprods(1 - fhatMCMC12)
+
+aucMCMC0 <- colCumsums(survMCMC0*diff(c(0, xg)))
+aucMCMC1 <- colCumsums(survMCMC1*diff(c(0, xg)))
+aucMCMC2 <- colCumsums(survMCMC2*diff(c(0, xg)))
+aucMCMC3 <- colCumsums(survMCMC3*diff(c(0, xg)))
+aucMCMC4 <- colCumsums(survMCMC4*diff(c(0, xg)))
+aucMCMC5 <- colCumsums(survMCMC5*diff(c(0, xg)))
+aucMCMC6 <- colCumsums(survMCMC6*diff(c(0, xg)))
+aucMCMC7 <- colCumsums(survMCMC7*diff(c(0, xg)))
+aucMCMC8 <- colCumsums(survMCMC8*diff(c(0, xg)))
+aucMCMC9 <- colCumsums(survMCMC9*diff(c(0, xg)))
+aucMCMC10 <- colCumsums(survMCMC10*diff(c(0, xg)))
+aucMCMC11 <- colCumsums(survMCMC11*diff(c(0, xg)))
+aucMCMC12 <- colCumsums(survMCMC12*diff(c(0, xg)))
+
+diffaucMCMC1 <- aucMCMC0 - aucMCMC1
+diffaucMCMC2 <- aucMCMC0 - aucMCMC2
+diffaucMCMC3 <- aucMCMC0 - aucMCMC3
+diffaucMCMC4 <- aucMCMC0 - aucMCMC4
+diffaucMCMC5 <- aucMCMC0 - aucMCMC5
+diffaucMCMC6 <- aucMCMC0 - aucMCMC6
+diffaucMCMC7 <- aucMCMC0 - aucMCMC7
+diffaucMCMC8 <- aucMCMC0 - aucMCMC8
+diffaucMCMC9 <- aucMCMC0 - aucMCMC9
+diffaucMCMC10 <- aucMCMC0 - aucMCMC10
+diffaucMCMC11 <- aucMCMC0 - aucMCMC11
+diffaucMCMC12 <- aucMCMC0 - aucMCMC12
+
+surv0 <- apply(survMCMC0, 1, mean)
+survlo0 <- apply(survMCMC0, 1, quantile, 0.025)
+survhi0 <- apply(survMCMC0, 1, quantile, 0.975)
+surv1 <- apply(survMCMC1, 1, mean)
+survlo1 <- apply(survMCMC1, 1, quantile, 0.025)
+survhi1 <- apply(survMCMC1, 1, quantile, 0.975)
+surv2 <- apply(survMCMC2, 1, mean)
+survlo2 <- apply(survMCMC2, 1, quantile, 0.025)
+survhi2 <- apply(survMCMC2, 1, quantile, 0.975)
+surv3 <- apply(survMCMC3, 1, mean)
+survlo3 <- apply(survMCMC3, 1, quantile, 0.025)
+survhi3 <- apply(survMCMC3, 1, quantile, 0.975)
+surv4 <- apply(survMCMC4, 1, mean)
+survlo4 <- apply(survMCMC4, 1, quantile, 0.025)
+survhi4 <- apply(survMCMC4, 1, quantile, 0.975)
+surv5 <- apply(survMCMC5, 1, mean)
+survlo5 <- apply(survMCMC5, 1, quantile, 0.025)
+survhi5 <- apply(survMCMC5, 1, quantile, 0.975)
+surv6 <- apply(survMCMC6, 1, mean)
+survlo6 <- apply(survMCMC6, 1, quantile, 0.025)
+survhi6 <- apply(survMCMC6, 1, quantile, 0.975)
+surv7 <- apply(survMCMC7, 1, mean)
+survlo7 <- apply(survMCMC7, 1, quantile, 0.025)
+survhi7 <- apply(survMCMC7, 1, quantile, 0.975)
+surv8 <- apply(survMCMC8, 1, mean)
+survlo8 <- apply(survMCMC8, 1, quantile, 0.025)
+survhi8 <- apply(survMCMC8, 1, quantile, 0.975)
+surv9 <- apply(survMCMC9, 1, mean)
+survlo9 <- apply(survMCMC9, 1, quantile, 0.025)
+survhi9 <- apply(survMCMC9, 1, quantile, 0.975)
+surv10 <- apply(survMCMC10, 1, mean)
+survlo10 <- apply(survMCMC10, 1, quantile, 0.025)
+survhi10 <- apply(survMCMC10, 1, quantile, 0.975)
+surv11 <- apply(survMCMC11, 1, mean)
+survlo11 <- apply(survMCMC11, 1, quantile, 0.025)
+survhi11 <- apply(survMCMC11, 1, quantile, 0.975)
+surv12 <- apply(survMCMC12, 1, mean)
+survlo12 <- apply(survMCMC12, 1, quantile, 0.025)
+survhi12 <- apply(survMCMC12, 1, quantile, 0.975)
+
+auc0 <- apply(aucMCMC0, 1, mean)
+auclo0 <- apply(aucMCMC0, 1, quantile, 0.025)
+auchi0 <- apply(aucMCMC0, 1, quantile, 0.975)
+auc1 <- apply(aucMCMC1, 1, mean)
+auclo1 <- apply(aucMCMC1, 1, quantile, 0.025)
+auchi1 <- apply(aucMCMC1, 1, quantile, 0.975)
+auc2 <- apply(aucMCMC2, 1, mean)
+auclo2 <- apply(aucMCMC2, 1, quantile, 0.025)
+auchi2 <- apply(aucMCMC2, 1, quantile, 0.975)
+auc3 <- apply(aucMCMC3, 1, mean)
+auclo3 <- apply(aucMCMC3, 1, quantile, 0.025)
+auchi3 <- apply(aucMCMC3, 1, quantile, 0.975)
+auc4 <- apply(aucMCMC4, 1, mean)
+auclo4 <- apply(aucMCMC4, 1, quantile, 0.025)
+auchi4 <- apply(aucMCMC4, 1, quantile, 0.975)
+auc5 <- apply(aucMCMC5, 1, mean)
+auclo5 <- apply(aucMCMC5, 1, quantile, 0.025)
+auchi5 <- apply(aucMCMC5, 1, quantile, 0.975)
+auc6 <- apply(aucMCMC6, 1, mean)
+auclo6 <- apply(aucMCMC6, 1, quantile, 0.025)
+auchi6 <- apply(aucMCMC6, 1, quantile, 0.975)
+auc7 <- apply(aucMCMC7, 1, mean)
+auclo7 <- apply(aucMCMC7, 1, quantile, 0.025)
+auchi7 <- apply(aucMCMC7, 1, quantile, 0.975)
+auc8 <- apply(aucMCMC8, 1, mean)
+auclo8 <- apply(aucMCMC8, 1, quantile, 0.025)
+auchi8 <- apply(aucMCMC8, 1, quantile, 0.975)
+auc9 <- apply(aucMCMC9, 1, mean)
+auclo9 <- apply(aucMCMC9, 1, quantile, 0.025)
+auchi9 <- apply(aucMCMC9, 1, quantile, 0.975)
+auc10 <- apply(aucMCMC10, 1, mean)
+auclo10 <- apply(aucMCMC10, 1, quantile, 0.025)
+auchi10 <- apply(aucMCMC10, 1, quantile, 0.975)
+auc11 <- apply(aucMCMC11, 1, mean)
+auclo11 <- apply(aucMCMC11, 1, quantile, 0.025)
+auchi11 <- apply(aucMCMC11, 1, quantile, 0.975)
+auc12 <- apply(aucMCMC12, 1, mean)
+auclo12 <- apply(aucMCMC12, 1, quantile, 0.025)
+auchi12 <- apply(aucMCMC12, 1, quantile, 0.975)
+
+diffauc1 <- apply(diffaucMCMC1, 1, mean)
+diffauclo1 <- apply(diffaucMCMC1, 1, quantile, 0.025)
+diffauchi1 <- apply(diffaucMCMC1, 1, quantile, 0.975)
+diffauc2 <- apply(diffaucMCMC2, 1, mean)
+diffauclo2 <- apply(diffaucMCMC2, 1, quantile, 0.025)
+diffauchi2 <- apply(diffaucMCMC2, 1, quantile, 0.975)
+diffauc3 <- apply(diffaucMCMC3, 1, mean)
+diffauclo3 <- apply(diffaucMCMC3, 1, quantile, 0.025)
+diffauchi3 <- apply(diffaucMCMC3, 1, quantile, 0.975)
+diffauc4 <- apply(diffaucMCMC4, 1, mean)
+diffauclo4 <- apply(diffaucMCMC4, 1, quantile, 0.025)
+diffauchi4 <- apply(diffaucMCMC4, 1, quantile, 0.975)
+diffauc5 <- apply(diffaucMCMC5, 1, mean)
+diffauclo5 <- apply(diffaucMCMC5, 1, quantile, 0.025)
+diffauchi5 <- apply(diffaucMCMC5, 1, quantile, 0.975)
+diffauc6 <- apply(diffaucMCMC6, 1, mean)
+diffauclo6 <- apply(diffaucMCMC6, 1, quantile, 0.025)
+diffauchi6 <- apply(diffaucMCMC6, 1, quantile, 0.975)
+diffauc7 <- apply(diffaucMCMC7, 1, mean)
+diffauclo7 <- apply(diffaucMCMC7, 1, quantile, 0.025)
+diffauchi7 <- apply(diffaucMCMC7, 1, quantile, 0.975)
+diffauc8 <- apply(diffaucMCMC8, 1, mean)
+diffauclo8 <- apply(diffaucMCMC8, 1, quantile, 0.025)
+diffauchi8 <- apply(diffaucMCMC8, 1, quantile, 0.975)
+diffauc9 <- apply(diffaucMCMC9, 1, mean)
+diffauclo9 <- apply(diffaucMCMC9, 1, quantile, 0.025)
+diffauchi9 <- apply(diffaucMCMC9, 1, quantile, 0.975)
+diffauc10 <- apply(diffaucMCMC10, 1, mean)
+diffauclo10 <- apply(diffaucMCMC10, 1, quantile, 0.025)
+diffauchi10 <- apply(diffaucMCMC10, 1, quantile, 0.975)
+diffauc11 <- apply(diffaucMCMC11, 1, mean)
+diffauclo11 <- apply(diffaucMCMC11, 1, quantile, 0.025)
+diffauchi11 <- apply(diffaucMCMC11, 1, quantile, 0.975)
+diffauc12 <- apply(diffaucMCMC12, 1, mean)
+diffauclo12 <- apply(diffaucMCMC12, 1, quantile, 0.025)
+diffauchi12 <- apply(diffaucMCMC12, 1, quantile, 0.975)
+
+tab <- rbind(
+  "Int 1" = quantile(diffaucMCMC1[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 2" = quantile(diffaucMCMC2[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 3" = quantile(diffaucMCMC3[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 4" = quantile(diffaucMCMC4[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 5" = quantile(diffaucMCMC5[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 6" = quantile(diffaucMCMC6[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 7" = quantile(diffaucMCMC7[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 8" = quantile(diffaucMCMC8[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 9" = quantile(diffaucMCMC9[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 10" = quantile(diffaucMCMC10[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 11" = quantile(diffaucMCMC11[57, ], probs = c(0.025, 0.5, 0.975)),
+  "Int 12" = quantile(diffaucMCMC12[57, ], probs = c(0.025, 0.5, 0.975))
+)
+kable(tab, caption = "Relative RMST(57)", col.names = c("2.5%", "50.0%", "97.5%"),
+      booktabs = TRUE, digits = 1) %>%
+  kable_styling()
+```
+
+
+```{r fig.cap = "Survival curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo1[xg>=15], rev(survhi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo5[xg>=29], rev(survhi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo9[xg>=36], rev(survhi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo2[xg>=15], rev(survhi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo6[xg>=29], rev(survhi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo10[xg>=36], rev(survhi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo3[xg>=15], rev(survhi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo7[xg>=29], rev(survhi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo11[xg>=36], rev(survhi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, surv0, type="n",xlab="Time",
+     ylab="Survival",
+     bty="l", xlim = range(xg), ylim = range(0, 1),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(survlo0, rev(survhi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(survlo4[xg>=15], rev(survhi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(survlo8[xg>=29], rev(survhi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(survlo12[xg>=36], rev(survhi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, surv0, col = 1, lwd = 2)
+lines(xg[xg>=15], surv4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], surv8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], surv12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+
+```{r fig.cap = "RMST curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo1[xg>=15], rev(auchi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo5[xg>=29], rev(auchi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo9[xg>=36], rev(auchi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo2[xg>=15], rev(auchi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo6[xg>=29], rev(auchi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo10[xg>=36], rev(auchi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo3[xg>=15], rev(auchi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo7[xg>=29], rev(auchi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo11[xg>=36], rev(auchi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, auc0, type="n",xlab="Time",
+     ylab="RMST",
+     bty="l", xlim = range(xg), ylim = c(0, 60),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(auclo0, rev(auchi0)), 
+        col=rgb(0/255,0,0/255,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(auclo4[xg>=15], rev(auchi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(auclo8[xg>=29], rev(auchi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(auclo12[xg>=36], rev(auchi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg, auc0, col = 1, lwd = 2)
+lines(xg[xg>=15], auc4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], auc8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], auc12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
+```
+
+
+
+
+```{r fig.cap = "Relative (to baseline) RMST curves", fig.height = 7}
+par(mfrow = c(2, 2))
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo1[xg>=15], rev(diffauchi1[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo5[xg>=29], rev(diffauchi5[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo9[xg>=36], rev(diffauchi9[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc1[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc5[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc9[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 1")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo2[xg>=15], rev(diffauchi2[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo6[xg>=29], rev(diffauchi6[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo10[xg>=36], rev(diffauchi10[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc2[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc6[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc10[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 2")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo3[xg>=15], rev(diffauchi3[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo7[xg>=29], rev(diffauchi7[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo11[xg>=36], rev(diffauchi11[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc3[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc7[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc11[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 3")
+
+plot(xg, rep(0, length(xg)), type="n",xlab="Time",
+     ylab="Relative RMST",
+     bty="l", xlim = range(xg), ylim = c(-20, 20),
+     cex.lab=cex.labVal,cex.axis=cex.axisVal)
+polygon(c(xg, rev(xg)), c(rep(0, length(xg)), rev(rep(0, length(xg)))), 
+        col=rgb(0,0,0,0.5), border=FALSE)
+polygon(c(xg[xg>=15], rev(xg[xg>=15])), c(diffauclo4[xg>=15], rev(diffauchi4[xg>=15])), 
+        col=rgb(1,153/255,153/255,0.5),border=FALSE)
+polygon(c(xg[xg>=29], rev(xg[xg>=29])), c(diffauclo8[xg>=29], rev(diffauchi8[xg>=29])), 
+        col=rgb(153/255,204/255,1,0.5),border=FALSE)
+polygon(c(xg[xg>=36], rev(xg[xg>=36])), c(diffauclo12[xg>=36], rev(diffauchi12[xg>=36])), 
+        col=rgb(153/255,1,153/255,0.5),border=FALSE)
+lines(xg[xg>=15], diffauc4[xg>=15], col = "darkred", lwd = 2)
+lines(xg[xg>=29], diffauc8[xg>=29], col = "darkblue", lwd = 2)
+lines(xg[xg>=36], diffauc12[xg>=36], col =  rgb(0, 102/255, 0, 1), lwd = 2)
+abline(v = c(14, 28, 35), lty = 2)
+title("Intervention 4")
 ```
 

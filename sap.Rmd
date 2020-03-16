@@ -50,17 +50,25 @@ def <- data.frame(
     "Index child",
     "Index vaccine",
     "Late vaccination",
-    "Sites"
+    "Parent",
+    "Sites",
+    "Subsequent child",
+    "Under-vaccination"
   ),
   "Definition" = c(
-    "Estimands align protocol objectives with the quantification of the intervention effect",
-    "The first child scheduled for vaccination for a given parent after the parent has been randomised.",
-    "The first scheduled vaccine date for the index child after the parent’s randomisation date.",
-    "A child who has not received the recommended vaccinations within 4 weeks (28 days) of the scheduled date according to the standard childhood immunisation schedule.",
-    "Participating SmartVax GPs and community-based providers."
+    linebreak("Estimands align protocol objectives with the quantification of the intervention effect(s). 
+    It is defined as “the target of estimation to address the scientific question of interest posed by the trial objective” in ICH E9(R1).\n
+    An estimand is a combination of eligibility criteria (population of interest), endpoint definition, treatment description (including the comparator), statistical analysis, treatment of intercurrent events post-randomisation (eg. missing values, non-compliance, use of rescue medication or interventions, etc.) and a population level summary (e.g. pairwise differences in the log hazard rates between the interventions).\n"),
+    linebreak("The first child scheduled for vaccination for a given parent after the parent has been randomised.\n"),
+    linebreak("The first scheduled vaccine date for the index child after the parent’s randomisation date.\n"),
+    linebreak("A child who has not received the recommended vaccinations within 4 weeks (28 days) of the scheduled date according to the standard childhood immunisation schedule.\n"),
+    linebreak("A parent of a child including a person who is regarded as the legally responsible caregiver of the child under law.\n"),
+    linebreak("Participating SmartVax GPs and community-based providers.\n"),
+    linebreak("Any child belonging to a parent whom, at the moment of enrolment, already has another child enrolled.\n"),
+    "A child who has not received all of the age-appropriate vaccinations recommended by the standard childhood immunisation schedule."
   )
 )
-ktab <- knitr::kable(def, booktabs = TRUE, linesep = "") 
+ktab <- knitr::kable(def, booktabs = TRUE, linesep = "", escape = F) 
 kableExtra::kable_styling(ktab, font_size = 10, bootstrap_options = "condensed", full_width = F,
                           latex_options = "HOLD_position") %>%
   kableExtra::column_spec(2, width = "20em")
@@ -221,7 +229,7 @@ Further details are given in Section \@ref(sensitivity-analyses-of-primary-outco
 No details are provided from participating sites concerning any reasons for delayed child vaccine administration or vaccines administered outside the site. 
 Therefore, for records where it is not possible to determine beyond a reasonable doubt which scheduled childhood vaccine is being administered, the parent will be excluded from the statistical analysis.  
 
-**Endpoint:** Time to vaccination calculated as date of vaccine administration minus date of randomisation (28 days before date of scheduled vaccination).
+**Endpoint:** Time to vaccination at participating sites from the date of randomisation.
 Vaccine administration which occurs later than 90 days after randomisation or within 28 days of a subsequently scheduled vaccination 
 
 
