@@ -38,6 +38,7 @@ documentclass: scrreprt
 classoption: bibliography=totoc
 header-includes:
   \usepackage{float}
+  \usepackage{setspace}
   \floatplacement{figure}{H}
 ---
 
@@ -68,6 +69,7 @@ cbp2 <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
           "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 ```
 
+\setstretch{1.5}
 
 # Definitions
 
