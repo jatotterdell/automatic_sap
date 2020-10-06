@@ -1,0 +1,928 @@
+\documentclass[
+  bibliography=totoc]{scrreprt}
+
+\usepackage{lmodern}
+
+
+\usepackage{amssymb,amsmath}
+\usepackage{ifxetex,ifluatex}
+\usepackage{fixltx2e} % provides \textsubscript
+\usepackage{vhistory}
+\usepackage[affil-it]{authblk}
+
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+
+
+\else % if luatex or xelatex
+  \ifxetex
+    \usepackage{mathspec}
+  \else
+    \usepackage{fontspec}
+  \fi
+  \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+\fi
+% use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+% use microtype if available
+\IfFileExists{microtype.sty}{%
+\usepackage{microtype}
+\UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\usepackage{hyperref}
+\hypersetup{unicode=true,
+            pdftitle={Statistical Analysis Plan},
+            pdfauthor={James Totterdell; Julie Marsh},
+            pdfborder={0 0 0},
+            breaklinks=true}
+\urlstyle{same}  % don't use monospace font for urls
+\usepackage{natbib}
+\bibliographystyle{plainnat}
+\usepackage{longtable,booktabs}
+
+\usepackage{vhistory}
+
+\usepackage{graphicx}
+
+\IfFileExists{parskip.sty}{%
+\usepackage{parskip}
+}{% else
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt plus 2pt minus 1pt}
+}
+\setlength{\emergencystretch}{3em}  % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{5}
+% Redefines (sub)paragraphs to behave more like sections
+\ifx\paragraph\undefined\else
+\let\oldparagraph\paragraph
+\renewcommand{\paragraph}[1]{\oldparagraph{#1}\mbox{}}
+\fi
+\ifx\subparagraph\undefined\else
+\let\oldsubparagraph\subparagraph
+\renewcommand{\subparagraph}[1]{\oldsubparagraph{#1}\mbox{}}
+\fi
+
+%%% Use protect on footnotes to avoid problems with footnotes in titles
+\let\rmarkdownfootnote\footnote%
+\def\footnote{\protect\rmarkdownfootnote}
+
+
+  \title{Statistical Analysis Plan}
+  \subtitle{AuTOMATIC: Adaptive Trial of MessAging to improve Immunisation Coverage}
+  \author{James Totterdell\textsuperscript{1} \\ Julie Marsh\textsuperscript{1}}
+  
+  \affil{\textsuperscript{1}Telethon Kids Institute, Adaptive Health Intelligence}
+
+    \date{Date: 13 May 2020}
+
+
+\usepackage{scrlayer}
+\DeclareNewLayer[% define a new layer
+  foreground,
+  foot,
+  contents={\parbox[b][\layerheight][b]{\layerwidth}{%
+    \hfill\includegraphics{assets/images/tki_ahi_logo}%
+  }}
+]{titlepage.logos}
+
+
+
+
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{wrapfig}
+\usepackage{float}
+\usepackage{colortbl}
+\usepackage{pdflscape}
+\usepackage{tabu}
+\usepackage{threeparttable}
+\usepackage{threeparttablex}
+\usepackage[normalem]{ulem}
+\usepackage{makecell}
+\usepackage{xcolor}
+
+\newcommand{\titledate}[2][2.5in]{%
+  \noindent%
+  \begin{tabular}{@{}p{#1}@{}}
+    \\ \hline \\[-.75\normalbaselineskip]
+    #2
+  \end{tabular} \hspace{1in}
+  \begin{tabular}{@{}p{#1}@{}}
+    \\ \hline \\[-.75\normalbaselineskip]
+    Date
+  \end{tabular}\vspace{4\baselineskip}
+}
+
+\begin{document}
+\AddLayersToPageStyle{empty}{titlepage.logos}% add the layer to pagestyle empty
+
+\begin{titlepage}
+
+  \makebox[0pt][l]{\smash{%
+    \parbox[t][\dimexpr\textheight-\ht\strutbox\relax][t]{\textwidth}{%
+      \includegraphics[width=3cm]{assets/images/waves-green-lighter}\hfill%
+  }}}
+
+  \begin{center}
+    {\sectfont\Huge Statistical Analysis Plan\par}\vspace{3\baselineskip}
+    {\huge AuTOMATIC: Adaptive Trial of MessAging to improve Immunisation Coverage\par}\vspace{3\baselineskip}
+  \end{center}
+  {\large Date: 13 May 2020\par}\vspace{0.5\baselineskip}
+  {\large Version: DRAFT 0.1\par}\vspace{0.5\baselineskip}
+  {\large ANZCTR Number: U1111-1189-6054\par}\vspace{0.5\baselineskip}
+  {\large           James Totterdell\textsuperscript{1},
+          Julie Marsh\textsuperscript{1}  \par}\vspace{0.5\baselineskip}
+  {\large\          \textit{\textsuperscript{1}Telethon Kids Institute, Adaptive Health Intelligence}  \par}\vspace{10\baselineskip}
+
+  \titledate{Statistician}
+  \titledate{CPI}\vfill
+
+\end{titlepage}
+
+\RemoveLayersFromPageStyle{empty}{titlepage.logos}% remove the layer
+
+
+
+\begin{versionhistory}
+      \vhEntry{0.1}{2020-01-17}{JT}{Draft created.}
+      \vhEntry{0.2}{2020-03-17}{JT, JM}{Incorporate estimands, re-work secondary analysis outline.}
+  \end{versionhistory}
+
+{
+    \setcounter{tocdepth}{1}
+  \tableofcontents
+}
+
+\listoftables
+
+
+\hypertarget{definitions}{%
+\chapter{Definitions}\label{definitions}}
+
+\begin{table}[H]
+\centering\begingroup\fontsize{10}{12}\selectfont
+
+\begin{tabular}{l>{\raggedright\arraybackslash}p{20em}}
+\toprule
+Term & Definition\\
+\midrule
+Estimand & Estimands align protocol objectives with the quantification of the intervention effect(s). \newline     It is defined as “the target of estimation to address the scientific question of interest posed by the trial objective” in ICH E9(R1).\newline \newline     An estimand is a combination of eligibility criteria (population of interest), endpoint definition, treatment description (including the comparator), statistical analysis, treatment of intercurrent events post-randomisation (eg. missing values, non-compliance, use of rescue medication or interventions, etc.) and a population level summary (e.g. pairwise differences in the log hazard rates between the interventions).\newline \\
+Index child & The first child scheduled for vaccination for a given parent after the parent has been randomised.\newline \\
+Index vaccine & The first scheduled vaccine date for the index child after the parent’s randomisation date.\newline \\
+Late vaccination & A child who has not received the recommended vaccinations within 4 weeks (28 days) of the scheduled date according to the standard childhood immunisation schedule.\newline \\
+Parent & A parent of a child including a person who is regarded as the legally responsible caregiver of the child under law.\newline \\
+Sites & Participating SmartVax GPs and community-based providers.\newline \\
+Subsequent child & Any child belonging to a parent whom, at the moment of enrolment, already has another child enrolled.\newline \\
+Under-vaccination & A child who has not received all of the age-appropriate vaccinations recommended by the standard childhood immunisation schedule.\newline \\
+\bottomrule
+\end{tabular}
+\endgroup{}
+\end{table}
+
+\hypertarget{introduction}{%
+\chapter{Introduction}\label{introduction}}
+
+The purpose of this document is to describe the statistical methods which will be used to analyse data in the AuTOMATIC: Adaptive Trial of MessAging to improve Immunisation Coverage trial.
+It is written for statisticians and should be read in conjunction with the protocol.
+
+The basic trial structure, objectives, endpoints, and quantities of interest are outlined in Section \ref{study-design}, the eligibility criteria are explained in \ref{x}, the statistical model and quantities of interest are introduced in Section \ref{statistical-methods}, trial adaptations are defined in Section \ref{interim-analyses-and-trial-adaptations}, and a summary of trial operating characteristics or provided in Section \ref{operating-characteristics}.
+
+\hypertarget{background-and-rationale}{%
+\section{Background and Rationale}\label{background-and-rationale}}
+
+The potential of SMS and the effect of message framing and timing on vaccination timeliness has not been studied in an Australian setting.
+We hypothesise that SMS reminders emanating from a family's usual vaccine provider may be more effective for improving vaccination uptake and timeliness than, for example, impersonal messages originating from a government source.
+We also aim to determine the optimal timing of sending reminders, as sending an SMS reminder to everyone before the scheduled-date may have a similar effectiveness to targeting parents of children who are over-due.
+However, from a practical perspective, reducing the costs associated with the sending of SMS reminders will have an impact on how they are implemented in routine clinical care.
+In addition, the optimal framing of the messages will be examined, as a neutral SMS reminder may be all that is necessary to convince parents to vaccinate on time.
+All messages were assessed by a panel of consumer representatives prior to obtaining ethics approval.
+
+\hypertarget{intervention}{%
+\section{Intervention}\label{intervention}}
+
+SmartVax is a vaccine safety initiative originally developed to monitor adverse reactions following vaccination.
+The system integrates with all major GP patient information systems and sends an automated SMS to parents 3 days after receiving a vaccine to ask whether their child had any reactions (e.g.~fever, rash).
+Parents can respond to the SMS and are prompted to complete an electronic survey asking for details of the side-effects if they indicated yes (``Y'').
+
+Recently, SmartVax has been further developed to send optional automated SMS `pre-call' reminders to notify parents that their child's next vaccination is nearly due, due or over-due.
+This study will investigate the effectiveness of sending SMS reminders using this technology.
+The SmartVax platform will interrogate the medical records of children registered at a practice to determine when vaccinations are due, and to send an automated SMS reminder prompting parents to call the clinic and schedule an appointment at the appropriate time.
+Following vaccine administration, the SmartVax platform will be able to use the details of the vaccination (entered electronically by site staff) and the child's date of birth to schedule the next SMS reminder.
+The platform will be used to send SMS reminders at different time points and with different message framing.
+We will examine the effect of these interventions on vaccine uptake.
+The intervention is designed to influence the parent, therefore, each parent will be allocated at random to a single intervention arm, which will apply to any children under their care at all scheduled vaccine occasions.
+
+Twelve intervention arms, consisting of the combination of four different message framings and three different timings will be investigated (i.e.~a 4x3 factorial design).
+The text message framings are classified as either:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  positive in tone (espousing a personal benefit from vaccination),
+\item
+  negative in tone (espousing a risk from late or failed vaccination),
+\item
+  neutral in tone (factual and conveying neither benefit nor risk), or
+\item
+  social norm (conveying the societal preponderance of vaccination).
+\end{enumerate}
+
+The messages may be sent at timings:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  14 days before the scheduled due date,
+\item
+  on the scheduled due date,
+\item
+  7 days after the schedule due date.
+\end{enumerate}
+
+Additionally, a control arm that receives no SmartVax SMS reminder will be included as a reference arm.
+This control arm will still receive standard care from the practice.
+Actual standard care may vary slightly from practice to practice and may include, for example, a letter from Medicare to signal an overdue vaccination, a notice from Centrelink if the parent is receiving a childcare rebate or a telephone/written reminder from the GP clinic.
+Parents in the standard care group will not receive an unsolicited SMS reminder for an upcoming vaccination, but participants may receive an appointment reminder or confirmation via SMS if they have scheduled an appointment if that is usual practice for their provider.
+
+\begin{table}[H]
+
+\caption{\label{tab:intsum}Intervention summary}
+\centering
+\fontsize{10}{12}\selectfont
+\begin{tabular}[t]{lrrrl}
+\toprule
+  & Combination & Timing & Message & cell\\
+\midrule
+Control & 0 & 0 & 0 & \\
+Intervention 1 & 1 & 1 & 1 & $b_1$$a_1$\\
+Intervention 2 & 2 & 2 & 1 & $b_2$$a_1$\\
+Intervention 3 & 3 & 3 & 1 & $b_3$$a_1$\\
+Intervention 4 & 4 & 1 & 2 & $b_1$$a_2$\\
+Intervention 5 & 5 & 2 & 2 & $b_2$$a_2$\\
+Intervention 6 & 6 & 3 & 2 & $b_3$$a_2$\\
+Intervention 7 & 7 & 1 & 3 & $b_1$$a_3$\\
+Intervention 8 & 8 & 2 & 3 & $b_2$$a_3$\\
+Intervention 9 & 9 & 3 & 3 & $b_3$$a_3$\\
+Intervention 10 & 10 & 1 & 4 & $b_1$$a_4$\\
+Intervention 11 & 11 & 2 & 4 & $b_2$$a_4$\\
+Intervention 12 & 12 & 3 & 4 & $b_3$$a_4$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\hypertarget{objectives}{%
+\section{Objectives}\label{objectives}}
+
+The aim of the study is to determine whether provider-initiated SMS reminders are effective for improving the timeliness of routine vaccination among Australian children.
+Specific objectives are listed below, the related outcomes are given in Section \ref{outcomes}.
+
+\hypertarget{primary-objectives}{%
+\subsection{Primary Objectives}\label{primary-objectives}}
+
+To determine the effect of different timing and framing of a personalised SMS reminder, emanating from a family's vaccine provider (general practice or community vaccination clinic), on the proportion of children vaccinated within 28 days of the scheduled due date for routine childhood vaccination compared to usual practice.
+Primarily, the objective of most interest is identification of the best message framing and timing combination out of those considered in terms of proportion of children vaccinated within 28 days of the scheduled due date.
+
+\hypertarget{secondary-objectives}{%
+\subsection{Secondary Objectives}\label{secondary-objectives}}
+
+The secondary objectives are to determine the effects of the interventions on time to vaccination for index vaccinations and all vaccinations, and the effect on vaccination status at 28 days after due date for all vaccinations.
+
+\hypertarget{study-design}{%
+\chapter{Study Design}\label{study-design}}
+
+\hypertarget{type}{%
+\section{Type}\label{type}}
+
+This is a Bayesian adaptive, factorial, superiority trial.
+Frequent interim analyses will be performed to assess if a combination of message framing and timing is superior to one or more other interventions.
+Intervention performance with respect to the primary outcome will be used to inform response adaptive randomisation leading to a higher allocation of future participants to better performing interventions.
+
+In addition to the response adaptive randomisation, the trial also allows early stopping for:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi})}
+\tightlist
+\item
+  Superiority if there is substantial evidence that one intervention arm results in a higher 28 day vaccination proportion than all others including control.
+\item
+  Non-superiority if there is evidence that no one intervention arm results in a sufficiently higher 28 day vaccination proportion than all others.
+\item
+  Non-inferiority if there is substantial evidence that the current best arm is superior to all inactive arms and control, and that the current active arms are non-inferior to this best arm.
+\item
+  Lack of effect if there is substantial evidence that all intervention arms are worse than standard care.
+\end{enumerate}
+
+\hypertarget{outcomes}{%
+\section{Outcomes}\label{outcomes}}
+
+\hypertarget{primary-outcomes}{%
+\subsection{Primary outcomes}\label{primary-outcomes}}
+
+The primary outcome is vaccination status at 28 days after the vaccine measured by the difference between date of vaccine administration and due date as recorded in the SmartVax system for the \emph{index vaccination} of each parent randomised.
+Refer to Section \ref{definitions} for definitions.
+
+The parent (whose behaviour we seek to change) can only be considered naive to the intervention on the first child-vaccination occasion, therefore, the primary analysis will be performed on the outcome of the first intervention occasion for each parent.
+
+\hypertarget{secondary-outcomes}{%
+\subsection{Secondary outcomes}\label{secondary-outcomes}}
+
+The secondary outcomes are:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  The vaccination status at 28 days after the vaccine for \emph{all children and vaccinations}.
+\item
+  The number of days to vaccination measured from the due date of vaccination to the date of administration censored at the minimum of 90 days after randomisation, or the date of their next reminder, for the \emph{index vaccination only}.
+\item
+  The number of days to vaccination measured from the due date of vaccination to the date of administration censored at the minimum of 90 days after randomisation, or the date of their next reminder, for \emph{all children and vaccinations}.
+\end{enumerate}
+
+\hypertarget{estimands}{%
+\subsection{Estimands}\label{estimands}}
+
+Estimands provide a structured framework to increase the transparency and precision in describing an intervention effect of interest.
+They inform decision making within a clinical trial setting by clearly describing the risks and benefits of an intervention.
+Interventions designed to increase childhood vaccine uptake and coverage are assessed in terms of timely percentage uptake and time-to-event endpoints, respectively.
+However, these endpoints address different objectives and the effect of each intervention may differ over time or by the age of the child at scheduled vaccination.
+It is anticipated that the results may differ between the estimands as each addresses a different hypothesis.
+Estimands and sensitivity analyses are described according to recommendations in ICH E9-R1.
+
+\hypertarget{primary-estimand}{%
+\subsubsection{Primary Estimand}\label{primary-estimand}}
+
+\textbf{Objective:} To determine the real-world comparative effectiveness of the first vaccine-provider initiated SMS reminder framing and timing for increasing the proportion of children vaccinated within 28 days of scheduled routine vaccine date.
+
+\textbf{Strategy:} Treatment-policy, irrespective of age-at-scheduled-vaccine.
+
+\textbf{Population of interest:} Parents of index children receiving their index vaccine, in addition to meeting the study eligibility criteria in Section \ref{eligibility-criteria}.
+No details are provided from participating sites concerning any reasons for delayed child vaccine administration or vaccines administered outside the site.
+
+\textbf{Endpoint:} Evidence of administration of vaccine for index vaccine at participating site within 28 days of scheduled vaccine date (binary endpoint).
+
+\textbf{Treatment description:} Control arm and 12 intervention arms as detailed in Section \ref{intervention}.
+Comparisons will be made between all arms.
+
+\textbf{Treatment of intercurrent events:} Parents will be included in the intervention group they were allocated to, irrespective of whether they received the SMS text or materials related to the site standard-of-care or not.
+In the absence of evidence of vaccine administration within 28 days of scheduled date at the participating site, including due to participants who are lost to follow up or move out of the GP-site catchment area, it will be assumed that the vaccine has not been administered.
+
+\textbf{Statistical method:} Bayesian logistic regression; details in Section \ref{analysis-of-primary-outcome}.
+
+\textbf{Population summary:} The posterior probability that an intervention is superior to all other invention arms.
+In addition, posterior summaries from the statistical model parameters for average SMS text framing and timing, relative to the overall intervention effect and interaction effects for framing and timing combinations, will be presented as point estimates and highest density intervals (HDI).
+Further details are given in Section \ref{analysis-of-primary-outcome}.
+
+\textbf{Sensitivity analysis:} To address the assumption of no change in background trends of vaccine uptake and coverage, a sensitivity analysis will be performed including an additional time-dependent parameter in the statistical model.
+It is anticipated that only small changes in baseline rates may be observed over time.
+Further details are given in Section \ref{sensitivity-analyses-of-primary-outcome}.
+
+\hypertarget{secondary-estimand}{%
+\subsubsection{Secondary Estimand}\label{secondary-estimand}}
+
+\textbf{Objective:} To determine the real-world timeliness of first vaccine-provider initiated SMS reminder framing and timing for reducing the time to vaccination for routine childhood vaccines.
+
+\textbf{Strategy:} Treatment-policy, irrespective of age-at-scheduled-vaccine.
+
+\textbf{Population of interest:} Parents of index children receiving their index vaccine, in addition to meeting the study eligibility criteria in Section \ref{eligibility-criteria}.
+No details are provided from participating sites concerning any reasons for delayed child vaccine administration or vaccines administered outside the site.
+
+\textbf{Endpoint:} Time to vaccination at participating sites from the date of randomisation.
+Vaccine administration which occurs later than \textbf{(60?)90} days after randomisation will be censored.
+The reminder system records no information as to which of the scheduled vaccines have been given.
+Therefore, vaccinations which occur within 14 days of a subsequently scheduled vaccination are assumed to correspond to the upcoming scheduled dose rather than the preceding one, unless investigation shows evidence that another vaccination had is given closer to that subsequent scheduled vaccination.
+
+\textbf{Treatment description:} Control arm and 12 intervention arms as detailed in Section \ref{intervention}.
+
+\textbf{Treatment of intercurrent events:} Parents will be included in the intervention group they were allocated to, irrespective of whether they received the SMS text or materials related to the site standard-of-care or not.
+In the absence of evidence of vaccine administration within 60 days of scheduled date at the participating sites, including due to participants who are lost to follow up or move out of the GP-site catchment area, it will be assumed that the vaccine has not been administered and the endpoint will be right censored at 60 days.
+
+\textbf{Statistical method:} Bayesian discrete-time hazard regression model; more details in Section \ref{analysis-of-secondary-outcomes}.
+
+\textbf{Population summary:} The posterior summary of restricted mean survival time under each intervention relative to the control group.
+
+\hypertarget{randomisation}{%
+\section{Randomisation}\label{randomisation}}
+
+The parent is the unit of randomisation, as it is their behaviour we seek to change.
+Parents of eligible children will therefore be allocated at random to one of the 13 arms.
+Each child may receive more than one scheduled vaccination during the study period, but the parent will receive the same intervention for all eligible children under their care for all scheduled vaccinations.
+
+To avoid randomising the same parent to different arms across different sites (in case they have registered at multiple SmartVax GPs and/or community-based providers) the random allocation will be automatically generated from a central de-identified allocation list.
+The use of centralised randomisation will ensure that if the parent is registered at multiple participating SmartVax sites, they will be allocated to the same intervention arm for all eligible children under their care, at all scheduled vaccine doses and across all participating sites throughout the study period.
+The standard de-identification algorithm employed across all sites will ensure that the same unique parent ID will be generated at all sites based on the recorded mobile phone number.
+It is anticipated that there will be a low rate of incorrect or out of date mobile phone numbers recorded in the site records and that this will be equally likely to occur across all intervention arms.
+
+Prior to the first interim analysis, parents will be equally likely to be randomised to any of the intervention or control arms; this is the run-in period before response-adaptive randomisation commences.
+Following each interim analysis, the allocation ratios to each intervention arm will be updated and a new allocation list generated on the middleware application.
+All parents randomised after an interim will then be allocated to arms according to the new allocation list.
+
+\hypertarget{sample-size}{%
+\section{Sample size}\label{sample-size}}
+
+No fixed minimum sample size will be set.
+A maximum of 10,000 parents will be randomised unless one or more pre-specified stopping rule(s) is (are) met at interim analyses.
+This sample size was chosen based on simulations of the adaptive trial (see Section \ref{operating-characteristics}).
+
+\hypertarget{trial-population}{%
+\chapter{Trial Population}\label{trial-population}}
+
+Up to 10,000 parents will be enrolled from GP and public vaccination clinics participating in SmartVax across Australia.
+A diverse geographical range of clinics will be invited to participate to ensure representation from a broad socio-demographic cross section of suburbs, including from regional Australia.
+Agreements will be sought from all clinics, and governing bodies prior to enrolling at these sites.
+Study participation (parent and child/children) is from parent's randomisation until the last scheduled vaccine dose has been administered before five years of age for any child under their care or until the trial concludes.
+
+\hypertarget{eligibility-criteria}{%
+\section{Eligibility criteria}\label{eligibility-criteria}}
+
+To be included in the study ALL of the following criteria must be satisfied;
+
+\begin{itemize}
+\tightlist
+\item
+  Parents of children aged 6 weeks -- 4 years (strictly less than 5 years) who are registered with a SmartVax registered GP clinic or community vaccination clinic or whose clinic has expressed interest in SmartVax.
+\item
+  Parents must have a mobile phone number registered with the vaccine provider.
+\item
+  Eligible children must have their details entered into their electronic health record, including the parent mobile phone number and the child's date of birth and name.
+\end{itemize}
+
+The participant will be excluded if ANY of the following apply:
+
+\begin{itemize}
+\tightlist
+\item
+  The parent(s) of the child have previously requested not to be contacted by the clinic via SMS.
+\item
+  Parents who in the opinion of clinic staff would be unsuitable for inclusion in the study, for example because they are known to attend for routine vaccinations elsewhere, they have relocated outside of the clinic catchment area, the registered mobile phone number is known to be obsolete or wrong, or because they are registered as conscientious objectors to vaccination.
+\item
+  The critical information required to produce a unique identification number has not been entered properly into the practice's electronic medical record (i.e.~parent mobile phone number, child's date of birth, child's first and surname).
+\item
+  Children known or suspected to be twins and triplets will be excluded; producing a unique identification number will not be possible for siblings with the same birthdate.
+\end{itemize}
+
+It may be necessary to withdraw the following participants from the analysis if:
+
+\begin{itemize}
+\tightlist
+\item
+  Any of the exclusion criteria are met subsequent to enrolment and before the end of follow-up.
+\end{itemize}
+
+\hypertarget{analysis-datasets}{%
+\section{Analysis datasets}\label{analysis-datasets}}
+
+The primary analysis dataset consists of index vaccines for each parent.
+The secondary outcome datasets will consist of all children and all vaccines for each parent.
+
+The data will be analysed and reported on an intention-to-treat (ITT) basis with all randomised participants contributing according to the estimands defind in \ref{estimands}.
+In particular, we cannot know that the SMS reminders were received or read by the participants, only that they were sent.
+Participants will be analysed in the arm they were allocated to.
+
+\hypertarget{statistical-methods}{%
+\chapter{Statistical Methods}\label{statistical-methods}}
+
+\hypertarget{data}{%
+\section{Data}\label{data}}
+
+Individual-level de-identified and encrypted data for every enrolled parent with associated child vaccination outcomes will be exported electronically and in an encrypted fashion to the secure REDCap database on the Telethon Kids Institute server.
+This data will include:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  the child's date of birth;
+\item
+  practice code;
+\item
+  child and parent's unique identifier codes;
+\item
+  date and time of randomisation;
+\item
+  intervention allocation (message type and timing);
+\item
+  date and time of intervention SMS sent if sent;
+\item
+  date and time of any subsequent index vaccination at that clinic within 90 days after randomisation.
+\item
+  Parent postcode
+\item
+  Date vaccine due
+\item
+  SMS delivery failure (if applicable)
+\end{enumerate}
+
+\hypertarget{analysis-of-primary-outcome}{%
+\section{Analysis of primary outcome}\label{analysis-of-primary-outcome}}
+
+Inferences in this trial will be based on a Bayesian statistical model.
+The model will be used to estimate the probability of vaccination by 28 days (primary endpoint) following the scheduled due date for the various interventions.
+The statistical model will account for variation in outcomes by intervention effect and scheduled age of vaccination.
+Eligible scheduled vaccinations occur at 2,4,6,12,18, and 48 months of age.
+The factorial design of the intervention arms in terms of SMS message framing and timing is presented in Table \ref{tab:intsum} with cell labels for each framing-timing combination.
+
+In what follows, the message framings are denoted by \(a\) and message timings by \(b\).
+The interim analyses are designated by \(t=1,...,T\) and cohort \(t\) refers to individuals recruited between interim \(t-1\) and \(t\) which has sample size \(n_t\).
+The total sample size at analysis \(t\) is then \(N_t = \sum_{j=1}^t n_t\).
+We denote all data available at analysis \(t\) by \(D_t\).
+
+The model for the probability of vaccination at 28 days after the scheduled due date, denoted \(p\), is
+\[
+\text{logit}(p) = 1\alpha_0 + W\alpha_1 + X^a\gamma^a + X^b\gamma^b + X^{ba}\gamma^{ba} + X\beta.
+\]
+
+The \(\alpha_0\) term is the intercept parameter giving the average log-odds of vaccination for the control arm.
+
+The \(\alpha_1\) term is the average intervention effect relative to the control arm across all message framings and timings.
+
+The \(\gamma^a_j,\ j=1,...,4\), constrained to sum to zero, are the deviation effects for the message framings from the average intervention effect.
+
+The \(\gamma^b_j,\ j=1,...,3\), constrained to sum to zero, are the deviation effects for the timings from the average intervention effect.
+
+The \(\gamma^{ba}_j,\ j=1,...,12\), constrained to sum to zero on the relevant message and timing margin, are the interaction effects between message framing and timing.
+
+The \(\beta\) are other model parameters for the model covariates: scheduled age of vaccination.
+
+The prior distributions for the intercept and average intervention effect parameters will be set to
+\[
+\begin{aligned}
+\alpha_0 &\sim N(0, 10^2) \\
+\alpha_1 &\sim N(0, 5^2).
+\end{aligned}
+\]
+The priors on the \(\gamma\) terms will be set so as to enforce the relevant sum-to-zero constraints.
+We would expect interaction effects to be smaller relative to the main effects, which are reflected by the chosen prior co-variances.
+\[
+\begin{aligned}
+S_l &= I_l - l^{-1}J_l \\
+\gamma^a &\sim N(0, 2.5^2S_4) \\
+\gamma^b &\sim N(0, 2.5^2S_3) \\
+\gamma^{ba} &\sim N(0, S_4\otimes S_3).
+\end{aligned}
+\]
+The prior on other model parameters will be
+\[
+\beta \sim N(0, 2.5^2).
+\]
+
+\hypertarget{sensitivity-analyses-of-primary-outcome}{%
+\section{Sensitivity analyses of primary outcome}\label{sensitivity-analyses-of-primary-outcome}}
+
+The use of response adaptive randomisation means that allocation ratios will change over time.
+If background trends in the outcome are also present, then arms with higher allocations over certain periods may display larger or smaller effects than those attributable to the intervention.
+Therefore, a secondary analysis investigating possible time trends will be undertaken.
+
+The primary model will be extended by including an additional term \(Z\tau\) in the linear predictor where
+\[
+\begin{aligned}
+\tau_t &= 0 \\
+\tau_{l-1}|\tau_l,\sigma_\tau^2 &\sim N(\tau_l,\sigma_\tau^2),\quad l=2,...,t \\
+\sigma_\tau^2 &\sim \text{IG}(0.25, 0.1).
+\end{aligned}
+\]
+The parameter \(\tau\) has a first-order random walk prior to smooth baseline changes in the response across the cohorts recruited between interims.
+The prior on \(\sigma_\tau^2\) highlights that we expect small changes in baseline rates between cohorts, but that the posterior will be highly influenced by the observed data.
+This specification does not take into account the time between recruitment of cohorts, i.e.~it assumes they are regularly spaced over time.
+If changes in the accrual pattern between cohorts are observed, the above can be modified to weight according to the time between period cohorts.
+
+\hypertarget{statistical-quantities}{%
+\section{Statistical quantities}\label{statistical-quantities}}
+
+The posterior distribution of the model parameters will be approximated using Markov chain Monte Carlo methods.
+At least 10,000 draws will be generated from the joint posterior distribution, and these draws will be used to approximate the quantities of interest as outlined in the current section and Section \ref{interim-analyses-and-trial-adaptations}.
+In more detail, denote the number of draws by \(M\). For each of the 13 arms, define \(\mu_j\) as the log-odds of vaccination by 28 days for arm \(j=0,...,12\) and define \(\theta_{jk} = \mu_j - \mu_k\) as the pairwise differences for \(j,k=0,...,12\).
+
+\hypertarget{posterior-summaries}{%
+\subsection{Posterior summaries}\label{posterior-summaries}}
+
+At the final analysis, posterior summaries for the model parameters will be presented in terms of point estimates and highest density intervals.
+These values will summarise: the average intervention effect across all message framing and timings relative to control, the average effect of each framing and timing main effect relative to the overall intervention effect, and interaction effects of the framing and timing combinations.
+Where explicit hypotheses and decision rules have been stated, these will be assessed and reported in terms of their posterior probability as outlined below.
+
+\hypertarget{probability-best-intervention-arm}{%
+\subsection{Probability best intervention arm}\label{probability-best-intervention-arm}}
+
+Decisions related to the primary outcome and response adaptive randomisation will be based on the posterior probability that each arm is superior to all others.
+We define \(\pi_{jt}\) be the posterior probability that each intervention \(j=1,...,12\), is the best intervention given the data available up to interim \(t\).
+This value is given and estimated by
+\[
+\begin{aligned}
+\pi_{jt} &= \mathbb P[\mu_j > \mu_k;\forall k\ne j,k>0|D_t] \\
+\hat\pi_{jt} &= M^{-1}\sum_{m=1}^M \mathbb I\left[\mu_{j}^{[m]}>\mu_k^{[m]},\ \forall k\ne j,k>0\right].
+\end{aligned}
+\]
+The \textbf{current best intervention arm} is then defined as \(b_t = \arg\max_j \pi_{jt}\).
+
+It may be that many or most intervention arms appear similarly effective, in which case, they could all have approximately equal posterior probability of being superior.
+A superiority threshold then may never be reached.
+We would prefer to stop early and avoid spending more resources trying to differentiate between small effects amongst many arms when all interventions are similarly effective, however we are unlikely to have sufficient sample size to declare global equivalence amongst intervention arms.
+Therefore, in addition to a superiority assessment based on the above value, a non-superiority assessment will also be made with reference to a defined margin \(\Delta>0\).
+By non-superiority, it is meant that every intervention arm has low posterior probability of being superior to all the others by an amount of at least \(\Delta\).
+The quantity to be used for deciding non-superiority is the same as for superiority, but utilises a non-zero reference value \(\Delta=0.1\) and is denoted as
+\[
+\begin{aligned}
+\varphi_{jt} &= \mathbb P(\mu_j > \mu_k+\Delta;\forall k\ne j,k>0|D_t) \\
+\hat\varphi_{jt} &= M^{-1}\sum_{m=1}^M \mathbb I\left[\mu_{j}^{[m]}>\mu_k^{[m]} + \Delta,\ \forall k\ne j,k>0\right].
+\end{aligned}
+\]
+
+If few arms are equally superior, both superiority and non-superiority thresholds are unlikely to be reached.
+Again, we would prefer to stop early and avoid spending more resources trying to differentiate between small effects amongst few arms.
+Therefore, if the currently active intervention arms appear similar to each other and superior to inactive arms, then the trial will be stopped for non-inferiority of the active arms.
+The quantities utilised for this rule are the probability that all active arms are non-inferior to the current best arm, \(b_t\), and the probability that the current best arm is better than all inactive arms.
+Assuming that \(\mathcal{A}_t\subseteq\{1,...,12\}\) denotes the indices of active arms following interim \(t\), we define
+\[
+\begin{aligned}
+\Xi_t &= \mathbb P(\mu_j > \mu_{b_t} - \Delta; \forall j \in \mathcal{A}_t)\quad\text{(all active arms non-inferior to best)} \\
+\xi_t &= \mathbb P(\mu_{b_t} > \mu_k; \forall k \in \mathcal{A}_t^c)\quad\text{(best arm superior to all inactive arms)}
+\end{aligned}
+\]
+where \(\mathcal{A}_t\) is the set of indices of the active arms following interim \(t\).
+
+\hypertarget{probability-better-than-control}{%
+\subsection{Probability better than control}\label{probability-better-than-control}}
+
+To declare an intervention arm superior, it must also be better than standard of care.
+Let \(\phi_{jt}\) be the posterior probability that each intervention \(j=1,...,12\), is better than control given the data available to interim \(t\), given and estimated by
+\[
+\begin{aligned}
+\phi_{jt} &= \mathbb P[\mu_j > \mu_0|D_t] \\
+\hat\phi_{jt} &= M^{-1}\sum_{m=1}^M \mathbb I\left[\mu_{j}^{[m]}>\mu_0^{[m]}\right].
+\end{aligned}
+\]
+
+\hypertarget{probability-of-rank}{%
+\subsection{Probability of Rank}\label{probability-of-rank}}
+
+At the end of the trial, we may not have declared any intervention arms superior or non-inferior.
+There may still be a subset of intervention arms which are competing amongst each other, but standout as superior to the others.
+Investigation of rank probabilities may help highlight such a scenario.
+
+At each interim, the cell means and factor level means may be ranked according to (in terms of cell means as an example)
+\[
+\begin{aligned}
+R_j &= \text{rank}(\mu_j) = \sum_{l=1}^{12} \mathbb I[\mu_j\geq\mu_l] \\
+R_j^\star &=\text{rank}\left(\mathbb E[R_j|D_t]\right).
+\end{aligned}
+\]
+For each intervention arm and main effect, we will investigate the marginal rank probabilities \(\mathbb P[R_j=k|D_t]\), that is, the probability that arm \(j\) is ranked \(k\)th in response rate, as approximated by
+\[
+\hat R_j^k = M^{-1}\sum_{m=1}^M\sum_{l=1}^k \mathbb I\left[\mu_j^{[m]}\geq \mu_l^{[m]}\right],\ k=1,...,12,\ j=1,...,12.
+\]
+
+\hypertarget{analysis-of-secondary-outcomes}{%
+\section{Analysis of secondary outcomes}\label{analysis-of-secondary-outcomes}}
+
+For the secondary outcome definitions refer to Section \ref{secondary-outcomes}.
+
+Secondary outcome 1. will be analysed analogously to the primary outcome.
+However, nesting of vaccinations within children and children within parents will be accounted for by an appropriately specified GLMM.
+
+Given that event times will only be available in days, secondary outcomes 2. and 3. will be analysed according to a discrete time-to-event model.
+Event time \(t\in\{1,...,k\}\) indicates that the event occurred in the interval \([t-1, t)\) with \(y_{it}=1\) indicating vaccination and \(y_{it}=0\) censoring.
+We take \(t=1\) to be the date of randomisation for the parent which occurs 28 days prior to the scheduled due date.
+SMS messages may then be sent at times \(t=15, 29, 36\) (14 days before due, on the due date, and 7 days after the due date, respectively).
+Censoring at 90 days after randomisation then occurs at \(t=90\).
+
+Event times may also be censored according to whether the child received another intervention related to a subsequent vaccine (e.g.~SMS reminder for their 6 month vaccine before receiving their 4 month vaccine).
+
+We specify a semi-parametric hazard regression model and will allow for group specific curves, \(j=1,...,12\) to deviate from the baseline curve of no intervention, \(j=0\), with the curves modelled by penalised splines \citep{eilers1996, currie2002, wand2008}
+\[
+\begin{aligned}
+\eta_{ijt} &= s_0(t) + s_{j(i)}(t) \\
+\lambda_{ijt} &= h(\eta_{ijt}) \\
+s_0(t) &= \beta_0 + \beta_1 + \textstyle\sum_{l=1}^L b_l z_l(t) \\
+s_j(t) &= \gamma_{0j} + \gamma_{1j} + \textstyle\sum_l^L g_{jl} w_l(t) \\
+\beta &\sim N(0,5^2) \\
+\gamma &\sim N(0,5^2) \\
+b|\sigma^2 &\sim N(0,\sigma^2)\\
+g_j|\tau_j^2 &\sim N(0, \tau_j^2)\\
+\sigma^2 &\sim C^+(0, 2) \\
+\tau_j^2 &\sim C^+(0, 2)
+\end{aligned}
+\]
+where \(z_l\) are spline bases enforcing a smoothing penalty and \(s_j\) is the curve for individuals \(i\) in group \(j\) and \(h\) is the chosen link function.
+We by default choose \(h(\eta) = 1 - \exp(-\exp(\eta))\), that is a Gompertz hazards model.
+
+All individuals contribute to the baseline curve until the the timing of their intervention, that is \(s_j(t)\) is 0 until \(t \geq \tau_j\) where \(\tau_j\) is the time at which a message is received for individuals in group \(j\).
+
+From this model primary interest will be on the restricted mean survival time (RMST) \citep{royston2011, royston2013} to \(t^\star\) in each group, defined as
+\[
+\text{RMST}_j(t^\star) = \int_0^{t^\star} S_j(t) dt,\quad j=0,1,....,12.
+\]
+with \(S_j(t)\) the survival curve of remaining unvaccinated obtained from the above model for group \(j\).
+In particular, we will compare groups according to the difference in their RMST relative to the baseline (no intervention) survival.
+\[
+\Delta_j(t^\star) = \int_0^{t^\star} S_j(t) - S_0(t)dt,\quad j=1,...,12.
+\]
+
+If estimation issues occur with the above model we will also consider the simplified grouped proportional hazards model
+\[
+\begin{aligned}
+\eta_{it} &= s_0(t)  + X(t)\beta \\
+\lambda_{it} &= h(\eta_{it})
+\end{aligned}
+\]
+where the baseline hazard is modelled as previously, but each intervention effect is assumed to be an additive constant on the transformed hazard scale.
+
+Due to nesting of vaccinations within children, and children within parents, secondary outcome 3. will include additional random effects terms in the linear predictor to account for the grouping of children within their parents.
+
+\hypertarget{interim-analyses-and-trial-adaptations}{%
+\section{Interim analyses and trial adaptations}\label{interim-analyses-and-trial-adaptations}}
+
+Interim analyses are scheduled to occur every 500 participants who provide information on the primary endpoint.
+Only the primary analysis will be performed at each interim and thus only the primary outcome will inform the response-adaptive randomisation and trial adaptations.
+At each interim analysis there will be index cases who are enrolled but yet to reach 28 days after their due vaccination; these are not eligible for inclusion in the current interim analysis but will be included in subsequent interims once their 28 days has passed.
+With the maximum sample size of 10,000, an interim every 500 participants implies a maximum of 20 interim analyses.
+
+\hypertarget{arm-allocations}{%
+\subsection{Arm allocations}\label{arm-allocations}}
+
+At the start of the trial, allocation ratios to each arm will be equal.
+All new participants will have 1/13 probability of being allocated to each of the 13 arms.
+The control arm will have fixed allocation of \(q_0=1/13\) throughout the duration of the trial.
+This fixed allocation applies regardless of the number of active intervention arms.
+The randomisation probabilities to the intervention arms will be updated is data accrues.
+
+Following each analysis \(t\), the allocation probability to arm \(j\) will be a function of the probability that each arm is the best intervention arm in proportion to
+\[
+r_{jt} \propto \sqrt{\frac{\pi_{jt}\mathbb V[\mu_j|D_t]}{n_{jt} + 1}},\quad j=1,...,12.
+\]
+The ratios are normalised to sum to one and share the remaining probability after accounting for the fixed control arm allocation \(q_0\)
+\[
+q_{jt} = (1 - q_0)\frac{r_{jt}}{\sum_j r_{jt}},\quad j=1,...,12.
+\]
+
+An arm may be set to receive zero allocations in two ways:
+
+\begin{itemize}
+\tightlist
+\item
+  If the value of \(\pi_{jt}\) is less than 0.01 (low posterior probability of being the best arm) following interim analysis \(t\), then the value of \(q_{jt}\) will be set to zero and its value redistributed amongst any remaining non-zero values of \(q_t\).
+  This implies that the arm \(j\) is inactive until the next interim as it has low probability of being the best intervention arm.
+  At the next interim, \(t+1\), it may become active again if \(\pi_{j,t+1}\) exceeds 0.01.
+\item
+  If \(\hat\phi_{jt}<0.05\) then the allocation probability for arm \(j\), \(q_{jt}\), will be set to zero and its value redistributed amongst any remaining non-zero values of \(q_t\).
+  This implies that arm \(j\) is inactive as it has low probability of being better than control.
+  At the next interim, \(t+1\), it may become active again if \(\phi_{j,t+1}\) exceeds 0.05.
+\end{itemize}
+
+The intervention arms which receive non-zero allocation following an interim are designated \emph{active} arms, as given by the set
+\[
+\mathcal{A}_{t} = \{j|\pi_{jt} > 0.01 \cap \phi_{jt}>0.05\}.
+\]
+with the complement \(\mathcal{A}_t^c\) \emph{inactive}.
+
+\hypertarget{intervention-superiority}{%
+\subsection{Intervention superiority}\label{intervention-superiority}}
+
+At any analysis, if a single arm has at least \(\kappa_t^{\text{superior}}\) posterior probability of being the best overall arm, and this arm is superior to the control group with 0.95 posterior probability, then this result triggers a stop for superiority of that arm.
+\[
+\hat\pi_{jt}>\kappa_t^{\text{superior}}\ \text{ and }\ \hat\phi_{jt}>0.95,\quad j=1,...,12.
+\]
+
+The threshold value \(\kappa_t^{\text{superior}}\) is allowed to change across interims, \(t\), according to
+\[
+\kappa_t^{\text{superior}} = 0.85 + (0.75 - 0.85)\left(\frac{t-1}{T-1}\right)^{1/2},\quad t = 1,...,T.
+\]
+
+\hypertarget{control-superiority}{%
+\subsection{Control superiority}\label{control-superiority}}
+
+If all arms are worse than control, \(\hat\phi_{jt}<0.05\) for all j = 1, \ldots, 12, then the trial will be stopped early for lack of effectiveness of any intervention relative to standard care.
+
+\hypertarget{non-superiority-of-interventions}{%
+\subsection{Non-superiority of interventions}\label{non-superiority-of-interventions}}
+
+If there is little evidence that any single intervention arm provides some improvement, then the trial may be stopped for non-superiority.
+At any analysis, if no single arm has at least 0.05 posterior probability of being superior to all other arms by at least \(\Delta=0.1\), then this result triggers a stop for non-superiority of all arms.
+That is, if \(\hat\varphi_{jt}<0.05\) for all \(j=1,...,12\), the non-superiority stopping is triggered.
+
+\hypertarget{non-inferiority-of-interventions}{%
+\subsection{Non-inferiority of interventions}\label{non-inferiority-of-interventions}}
+
+If there is evidence that the active arms are sufficiently close to the current best intervention arm, and that the current best intervention arm is better than control and all inactive arms, then there is little benefit in continuing to allocate more subjects to these active arms, and the trial will stop for non-inferiority of the active arms.
+
+Non-inferiority stopping occurs if the current best arm is better than all inactive arms and control, and all active arms are non-inferior to the best arm:
+\[
+\hat\Xi_t >0.5\quad\text{ and } \hat\xi_t>\kappa_t^{\text{superior}}\ \text{ and }\ \hat\phi_{b_t,t}>0.95.
+\]
+
+\hypertarget{subgroup-analyses}{%
+\section{Subgroup analyses}\label{subgroup-analyses}}
+
+The effect of SMS vaccine reminders on the primary endpoint will be investigated in the final analysis for the following subgroups:
+
+\begin{itemize}
+\tightlist
+\item
+  Children at each scheduled age at vaccination (2, 4, 6, 12, 18 months and 48 months)
+\end{itemize}
+
+\hypertarget{missing-data}{%
+\section{Missing data}\label{missing-data}}
+
+Randomisation will only occur for participants with complete baseline data (all data fields except for the date of index vaccination).
+The SV software will include basic logic checks to prohibit entry of nonsensical or internally inconsistent data.
+Children with missing date of index vaccination data after 90 days since randomisation will be assumed to have not received the index vaccine before that date.
+No attempt will be made to confirm the practice-entered data with the practice or to ascertain or verify from other sources.
+
+\hypertarget{software}{%
+\section{Software}\label{software}}
+
+Data processing will be performed using R.
+Models will be fit in R using Stan via the \texttt{rstan} package.
+
+\hypertarget{operating-characteristics}{%
+\chapter{Operating Characteristics}\label{operating-characteristics}}
+
+Given the trial adaptations, simulations were required to explore and assess the operating characteristics of the design.
+Extensive simulations were undertaken where the trial design parameters were varied and trial quantities of interest were investigated.
+
+The choice of trial parameters aimed to achieve 0.05 family-wise false positive rate in the null case where \(\mu_0 = \mu_1 = ... = \mu_{12}\).
+For designs which satisfied this requirement, parameters were then selected by balancing power when one superior intervention arm exists in truth, and stopping early for non-superiority or non-inferiority in cases where multiple arms are equally superior.
+
+For efficiency, simulations utilised variational approximations to the model parameter posteriors, and posterior quantities were calculated on the basis of 10,000 draws from this approximation. Operating characteristics were based on 10,000 simulations under each scenario.
+Based on the simulation results, the trial parameters as outlined in this statistical analysis plan were chosen.
+
+The chosen design controlled the family-wise false positive rate at 0.05 and provided at least 70\% power when one framing and timing combination was superior by at least 0.25 in the log-odds of 28 day vaccination compared to all other interventions with log-odds of response at 1.0.
+The 28 day vaccination response value of \(\text{expit}(1.0)\approx 0.73\) was chosen on the basis of historical data.
+The median sample size at stopping for non-superiority in the null scenario was 7,000.
+The median sample size at stopping for superiority when one intervention arm is superior was 6,000.
+
+On average at the time of stopping (irrespective of the reason), there was sufficient precision to claim a single framing or timing main effect superior to all others when one existed with an effect of increasing the log-odds by at least 0.25.
+
+For detailed results, refer to simulation document.
+
+\hypertarget{simulation-scenarios}{%
+\section{Simulation scenarios}\label{simulation-scenarios}}
+
+Although additional simulation scenarios were considered, included below is a subset of trial parameters explored.
+
+Two null scenarios were considered, one where all \(\mu_j=\) and one where all \(\mu_j=1\), equating to probability of vaccination at 28 days of 0.5 and 0.73 respectively. For effect scenarios, changes to the base log-odds \(\mu_0=1\), by values of 0.1, 0.25 and 0.5 were considered; odds ratios of 1.1, 1.28 and 1.65 respectively.
+
+In addition to varying effect sizes, we explore varying the number of equally superior arms:
+
+\begin{itemize}
+\tightlist
+\item
+  None superior (null scenario).
+\item
+  Control superior, all others equal.
+\item
+  One intervention superior, all others equal.
+\item
+  Two interventions equally superior, all others equal.
+\item
+  Three interventions equally superior (one message framing superior), all others equal.
+\item
+  Four interventions equally superior (one message timing superior), all others equal.
+\item
+  Six interventions equally superior (two message framings equally superior), all others equal.
+\item
+  All interventions equally superior to control.
+\end{itemize}
+
+Initial simulations explored various values for the trial parameters.
+Results presented here are based on secondary simulations where only some trial parameters varied.
+
+\begin{table}[!h]
+
+\caption{\label{tab:simpars}Trial parameters investigated in simulations.}
+\centering
+\fontsize{8}{10}\selectfont
+\begin{tabular}[t]{lll}
+\toprule
+Parameter & Values & Description\\
+\midrule
+delta\_sup & 0.1 & Delta for non-superiority\\
+kappa\_act & 0.01 & Threshold for arm to remain active\\
+kappa\_sup\_0 & 0.75, 0.85, 0.95 & Initial superiority threshold\\
+kappa\_sup\_1 & 0.75 & Final superiority threshold\\
+kappa\_ctr & 0.95 & Control comparison threshold\\
+kappa\_nonsup & 0.05, 0.1 & Non-superiority threshold\\
+kappa\_noninf & 0.5 & Non-inferiority threshold\\
+alloc\_ctrl & 1/13 & Fixed control group allocation\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\hypertarget{simulation-results}{%
+\section{Simulation results}\label{simulation-results}}
+
+(Refer to simulation document)
+
+\renewcommand\refname{References}
+\bibliography{assets/bib/sap.bib}
+
+
+
+\end{document}
