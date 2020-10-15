@@ -3,29 +3,17 @@ title: "Statistical Analysis Plan"
 subtitle: "AuTOMATIC: Adaptive Trial of MessAging to improve Immunisation Coverage"
 author:
   - "James Totterdell\\textsuperscript{1}"
-  - "Julie Marsh\\textsuperscript{1}"
+  - "Julie Marsh\\textsuperscript{2}"
 affiliation:
-  - "\\textsuperscript{1}Telethon Kids Institute, Adaptive Health Intelligence"
+  - "\\textsuperscript{1}University of Sydney, Health and Clinical Analytics, \\textsuperscript{2}Telethon Kids Institute, Adaptive Health Intelligence"
 date: "Date: `r format(Sys.time(), '%d %B %Y')`"
-version: "Version: DRAFT 0.4"
+version: "Version: 1.0"
 trialnum: "ANZCTR Number: U1111-1189-6054"
 vhist:
-- num: 0.1
-  date: "2020-01-17"
+- num: "1.0"
+  date: "2020-10-16"
   initial: "JT"
-  comment: "Draft created."
-- num: 0.2
-  date: "2020-03-17"
-  initial: "JT, JM"
-  comment: "Incorporate estimands, re-work secondary analysis outline."
-- num: 0.3
-  date: "2020-09-18"
-  initial: "JT"
-  comment: "Update plan to allow dropping of control group and simplify decision rules."
-- num: 0.4
-  date: "2020-10-01"
-  initial: "JT"
-  comment: "Finalise simulation results."
+  comment: "Final version, protocol 2.0"
 output: 
   bookdown::pdf_document2:
     template: assets/templates/sap_latex.tex
@@ -111,9 +99,9 @@ kableExtra::kable_styling(ktab, font_size = 10, bootstrap_options = "condensed",
 The purpose of this document is to describe the statistical methods which will be used to analyse data in the AuTOMATIC: Adaptive Trial of MessAging to improve Immunisation Coverage trial. 
 It is written for statisticians and should be read in conjunction with the protocol.
 
-The basic trial structure, objectives, endpoints, and quantities of interest are outlined in Sections \@ref(study-details) and \@ref(study-design), the eligibility criteria are explained in \@ref(trial-population), the statistical model and quantities of interest are introduced in Section \@ref(statistical-methods), trial adaptations are defined in Section \@ref(interim-analyses-and-trial-adaptations), and a summary of trial operating characteristics or provided in Section \@ref(operating-characteristics).
+The basic trial structure, objectives, endpoints, and quantities of interest are outlined in Sections \@ref(study-details) and \@ref(study-design), the eligibility criteria are explained in \@ref(trial-population), the statistical model and quantities of interest are introduced in Section \@ref(analysis-methods), trial adaptations are defined in Section \@ref(interim-analyses-and-trial-adaptations), and a summary of trial operating characteristics or provided in Section \@ref(operating-characteristics).
 
-This statistical analysis plan (SAP) is based on version 1.4 of the study protocol.
+This statistical analysis plan (SAP) is based on version 2.0 of the study protocol, October 2020.
 
 # Study Details
 
@@ -172,10 +160,10 @@ The specific objectives and the related outcomes are tabled below.
 
 ```{r}
 tab <- tibble(
-  Objective = "To determine the effect of different timing and framing of a personalised SMS reminder, emanating from a family’s vaccine provider (general practice or community vaccination clinic), on the proportion of children vaccinated within 28 days of the scheduled due date for routine childhood vaccination compared to usual practice.
+  Objective = c("To determine the effect of different timing and framing of a personalised SMS reminder, emanating from a family’s vaccine provider (general practice or community vaccination clinic), on the proportion of children vaccinated within 28 days of the scheduled due date for routine childhood vaccination compared to usual practice.
 The objective of most interest is identification of the best message framing and timing combination out of those considered in terms of proportion of children vaccinated within 28 days of the scheduled due date.
-", 
-  Outcome = "Vaccination status (vaccinated or not) by 28 days after the scheduled due date measured by the difference between date of vaccine administration and due date as recorded in the SmartVax system for the \\textit{index vaccination} of each parent randomised"
+", " "),
+  Outcome = c("Vaccination status (vaccinated or unvaccinated) at 28 days after scheduled vaccine due date for the index child for the index vaccine. On occasion, vaccination might occur prior to the due date. Such occasions will be counted as vaccinated by 28 days after the due date if it occurs no more than 14 days before the scheduled due date.", "Parents may have multiple children eligible for study inclusion and each child may receive multiple vaccine doses during the trial period. The index child is the first child scheduled to be vaccinated after the parent’s randomisation date and the index vaccine is the first scheduled vaccine date for each child after the parent’s randomisation date")
 )
 ktab <- knitr::kable(tab, booktabs = TRUE, linesep = "", 
              escape = FALSE) 
@@ -201,7 +189,8 @@ ktab <- knitr::kable(tab, booktabs = TRUE, linesep = "\\addlinespace\\addlinespa
 kableExtra::kable_styling(ktab, font_size = 10, bootstrap_options = "condensed", full_width = T,
                           latex_options = "HOLD_position")
 ```
-  
+
+ 
 # Study Design
 
 ## Type
@@ -249,8 +238,8 @@ In the absence of evidence of vaccine administration within 28 days of scheduled
 In addition, posterior summaries from the statistical model parameters for average SMS text framing and timing, relative to the overall intervention effect and interaction effects for framing and timing combinations, will be presented as point estimates and highest density intervals (HDI). 
 Further details are given in Section \@ref(analysis-of-primary-outcome).
 
-**Sensitivity analysis:** To address the assumption of no change in background trends of vaccine uptake and coverage, a sensitivity analysis will be performed including an additional time-dependent parameter in the statistical model. 
-It is anticipated that only small changes in baseline rates may be observed over time. 
+**Sensitivity analysis:** The sensitivity of the results will be investigated by varying the model covariates.
+For example, the interaction terms will be excluded, and main effects terms excluded for comparison of results.
 Further details are given in Section \@ref(sensitivity-analyses-of-primary-outcome).
 
 ### Secondary Estimand
@@ -265,16 +254,16 @@ No details are provided from participating sites concerning any reasons for dela
 **Endpoint:** Time to vaccination at participating sites from the date of randomisation.
 Vaccine administration which occurs later than 42 days after the vaccine due date will be censored.
 The reminder system records no information as to which of the scheduled vaccines have been given.
-Therefore, vaccinations which occur within 14 days of a subsequently scheduled vaccination are assumed to correspond to the upcoming scheduled dose rather than the preceding one, unless investigation shows evidence that another vaccination had is given closer to that subsequent scheduled vaccination.
+Therefore, vaccinations which occur within 14 days of a subsequently scheduled vaccination are assumed to correspond to the upcoming scheduled dose rather than the preceding one.
 
 **Treatment description:** Control arm and 12 intervention arms as detailed in Section \@ref(intervention).
 
 **Treatment of intercurrent events:** Parents will be included in the intervention group they were allocated to, irrespective of whether they received the SMS text or materials related to the site standard-of-care or not. 
-In the absence of evidence of vaccine administration within 60 days of scheduled date at the participating sites, including due to participants who are lost to follow up or move out of the GP-site catchment area, it will be assumed that the vaccine has not been administered and the endpoint will be right censored at 60 days. 
+In the absence of evidence of vaccine administration within 60 days of scheduled date at the participating sites, including due to participants who are lost to follow up or move out of the GP-site catchment area, it will be assumed that the vaccine has not been administered and the endpoint will be right censored at 42 days after the due date. 
 
-**Statistical method:** Bayesian discrete-time hazard regression model; more details in Section \@ref(analysis-of-secondary-outcomes).
+**Statistical method:** Bayesian proportional continuation ratio regression model; more details in Section \@ref(analysis-of-secondary-outcomes).
 
-**Population summary:** The posterior summary of restricted mean survival time under each intervention relative to the control group.
+**Population summary:** The posterior summary of conditional odds ratio and restricted mean survival time under each intervention relative to the control group.
 
 
 ## Randomisation
@@ -289,7 +278,8 @@ The standard de-identification algorithm employed across all sites will ensure t
 It is anticipated that there will be a low rate of incorrect or out of date mobile phone numbers recorded in the site records and that this will be equally likely to occur across all intervention arms. 
 
 Prior to the first interim analysis, parents will be equally likely to be randomised to any of the interventions and a higher ratio will be allocated to the control arm; this is the run-in period before response-adaptive randomisation commences.
-Following each interim analysis, the allocation ratios to each intervention arm will be updated and a new allocation list generated on the middleware application. 
+Following each interim analysis, the allocation ratios to each intervention arm will be updated and a new allocation list generated on the middleware application.
+Any arms which have been dropped will receive zero allocations and the control arm allocation ratio will be fixed unless dropped.
 All parents randomised after an interim will then be allocated to arms according to the new allocation list.
 
 ## Sample size
@@ -328,6 +318,8 @@ It may be necessary to withdraw the following participants from the analysis if:
 
 The primary analysis dataset consists of index vaccines for each parent.
 The secondary outcome datasets will consist of all children and all vaccines for each parent.
+At the time of an interim analysis, all index vaccinations which are past due (greater than 28 days after the scheduled due date) relative to the analysis reference date will be included in the analysis set.
+The reference date will be one week prior to the date on which the analysis is being run to allow the system to catch-up on any outstanding updates.
 
 The data will be analysed and reported on an intention-to-treat (ITT) basis with all randomised participants contributing according to the estimands defined in \@ref(estimands).
 In particular, we cannot know that the SMS reminders were received or read by the participants, only that they were delivered.
@@ -405,7 +397,7 @@ $$
 - The $\gamma_b$ constrained to sum to zero, are the deviation effects for the message framings from the average intervention effect.
 - The $\gamma_{ab}$ constrained to sum to zero on the relevant message and timing margin, are the interaction effects between message framing and timing.
 - The $\beta$ are other model parameters for the model covariates: scheduled age of vaccination.
-- The $\xi$ and $\tau$ are random effect terms adjusting for clinic and time of randomisation respectively.
+- The $\xi$ and $\tau$ are random effect terms adjusting for clinic and calendar due date respectively.
 
 The prior distributions for the intercept and average intervention effect parameters will be set to
 $$
@@ -437,18 +429,17 @@ These will be modelled as
 $$
 \begin{aligned}
 \xi|\sigma_xi^2 &\sim N(0, \sigma^2_\xi) \\
-\sigma_\xi^2 &\sim \text{IG}(0.25, 0.1) \\
+\sigma_\xi^2 &\sim \text{Half-}t(3, 0, 1) \\
 \tau_e|\sigma_\tau^2 &\sim N(\tau_{e-1}, \sigma_\tau^2) \\
-\sigma_\tau^2 &\sim \text{IG}(0.25, 0.1) \\
+\sigma_\tau^2 &\sim \text{Half-}t(3, 0, 1) \\
 \tau_1 &= 0.
 \end{aligned}
 $$
 where $e$ indicates the epoch.
+The parameter $\tau$ has a first-order random walk prior to smooth baseline changes in the response across epoch's. 
 The epoch groupings will be in 28 day increments with $\tau_1=1$ representing the most recent 28 days.
 In the event that accrual is slower then expected, this grouping may need to be reviewed.
 
-The parameter $\tau$ has a first-order random walk prior to smooth baseline changes in the response across epoch's. 
-The prior on $\sigma_\tau^2$ indicates that we expect small changes in baseline rates between epochs, but that the posterior will be highly influenced by the observed data.
 
 Pre-specified adaptations will be assessed using the primary analysis model.
 
@@ -458,7 +449,7 @@ As sensitivity analyses, reduced versions of the primary analysis model will be 
 A reduced model is specified without adjustment for clinic and epoch.
 Another reduced model is specified without the interaction term between framing and timing, and also without the framing and timing effects themselves for a completely pooled model comparing control to intervention.
 
-The reduced models considered will be
+The reduced models considered for comparison will be
 $$
 \begin{aligned}
 \eta &= 1\alpha + L\zeta + W\beta + Z_\xi\xi + Z_\tau\tau \\
@@ -466,13 +457,13 @@ $$
 \eta &= 1\alpha + L\zeta + X_a\gamma_a + X_b\gamma_b + X_{ab}\gamma_{ab} + W\beta.
 \end{aligned}
 $$
-The same priors will be used in these reduced models.
+The same priors on common parameters as for the primary analysis will be used in these reduced models.
 
 
 ## Statistical quantities
 
 The posterior distribution of the model parameters will be approximated using Markov chain Monte Carlo methods via the Stan language. 
-At least 10,000 draws will be generated from the joint posterior distribution, and these draws will be used to approximate the quantities of interest as outlined in the current section and Section \@ref(interim-analyses-and-trial-adaptations).
+At least 10,000 draws will be generated from the joint posterior distribution for the primary analysis, and these draws will be used to approximate the quantities of interest as outlined in the current section and Section \@ref(interim-analyses-and-trial-adaptations).
 
 For each of the 13 arms, we define $\mu_j$ as the conditional log-odds of vaccination by 28 days for arm $j=0,...,12$ and define $\theta_{jk} = \mu_j - \mu_k$ as the pairwise differences for $j,k=0,...,12$.
 
@@ -548,12 +539,12 @@ For each arm and overall, the empirical hazard and survival for days to vaccinat
 Inferences for the time to vaccination outcome will be based on a proportional continuation ratio model (logistic link). 
 Primary interest lies in the treatment effect on the conditional log-odds of vaccination at a given time (or the corresponding conditional odds ratio).
 
-Events may occur at times $k\in\{1,...,K\}$ indicating that the event occurred in the interval $[k-1, k)$ with $y_{ik}=1$ denoting vaccination and $y_{ik}=0$ no vaccination. 
+Events may occur at times $k\in\{1,...,K\}$ with $y_{ik}=1$ denoting vaccination and $y_{ik}=0$ no vaccination. 
 We take $k=1$ to be 14 days before the due date of the index vaccination. 
 SMS messages may then be sent at times $k=1, 15, 22$ (14 days before due, on the due date, and 7 days after the due date, respectively).
 Censoring at 42 days after the due date then occurs at $k=57$.
 
-The interventions themselves are time-varying; the message cannot affect the outcome until it has been received.
+The interventions themselves are time-varying; the message cannot affect the outcome until it has been sent.
 All participants contribute to the baseline hazard until the their intervention becomes active.
 The intervention design matrix are the same as for the primary outcome.
 If $\tau_i\in\{1,15,22\}$ denotes the timing of the intervention for participant $i$, then
@@ -575,13 +566,13 @@ b_m|\sigma^2 &\sim N(0,\sigma^2) \\
 $$
 
 where $B_m$ are spline bases enforcing the penalty and priors on the other parameters are as in the primary analysis model.
-We specify 30 equally spaced knots to be used for the baseline hazard.
+We specify 28 equally spaced interior knots to be used for the baseline hazard.
 
 #### Sensitivity Analyses
 
 It may be that the assumption of proportional continuation ratio is inappropriate.
 As sensitivity analysis, expanded versions of the model will be investigated.
-These models will allow interventions effects to be linear or flexibly varying on the log-odds of vaccination.
+These models will allow interventions effects to be flexibly varying on the conditional log-odds of vaccination.
 Under these models, the intervention specific curves are specified as
 $$
 \eta_{ik} = s_{0k} + u_{ik}\left[s_{j(i),k}\right] + w_i^\top\beta + z^\mathsf{T}_{\xi,i}\xi + z^\mathsf{T}_{\tau,i}\tau
@@ -590,32 +581,33 @@ where the group specific term is modelled by either
 $$
 \begin{aligned}
 (1)\quad s_{jk} &= \gamma_{0j} + \gamma_{1j}k \\
-(2)\quad s_{jk} &= \gamma_{0j} + \gamma_{1j}k + \textstyle\sum_{m=1}^M g_{jm} B_{mk} \\
+(2)\quad s_{jk} &= \gamma_{0j(a)} + \gamma_{1j(a)}k + \textstyle\sum_{m=1}^M g_{j(a)m} B_{mk} \\
 \gamma &\sim N(0,2.5^2) \\
 g_{jm}|\omega_j^2 &\sim N(0, \omega_j^2) \\
 \omega_j &\sim \text{Half-}t(3, 0, 10).
 \end{aligned}
 $$
+where $j(a)$ returns the timing of intervention $j$.
+That is $(1)$ represents combination specific curves and $(2)$ timing specific curves combined across all message framings.
 
 Under these models, the proportional continuation ratio does not apply.
-Therefore, primary interest will be in the restricted mean survival time (RMST) [@royston2011; @royston2013] to $t^\star$ in each group, defined as
+Therefore, primary interest will be in the survival curves themselves and restricted mean survival time (RMST) [@royston2011; @royston2013] to $t^\star$ in each group, defined as
 $$
 \text{RMST}_j(k^\star) = \int_0^{k^\star} S_j(k)\ \mathrm dk,\quad j=0,1,....,12.
 $$
-with $S_j(k)$ the survival curve of remaining unvaccinated obtained from the above model for group $j$. 
-In particular, we will compare groups according to the difference in their RMST relative to the baseline (no intervention) survival.
+with $S_j(k)$ the survival curve of remaining unvaccinated obtained from the above models for group $j$. 
+In particular, we will compare groups according to the difference in their RMST relative to the baseline (no intervention) survival
 $$
 \Delta_j(k^\star) = \int_0^{k^\star} S_j(k) - S_0(k)\ \mathrm dk,\quad j=1,...,12.
 $$
-
+as a summary of the relative average number of days spent unvaccinated.
 
 
 ### Secondary Outcomes 2. and 3.
 
-Secondary outcome 2. will be analysed analogously to the primary outcome. 
-However, nesting of vaccinations within children and children within parents will be accounted for by an additional hierarchical component in the linear predictor.
+Secondary outcome 2. and 3. will be analysed analogously to the primary and first secondary outcome. 
+However, nesting of vaccine occasions within parents will be accounted for by an additional hierarchical component for the parent in the linear predictor.
 
-Due to nesting of vaccinations within children, and children within parents, secondary outcome 3. will include additional random effects terms in the linear predictor to account for the grouping of children within their parents.
 
 ## Interim analyses and trial adaptations
 
@@ -719,7 +711,7 @@ kable(tab, caption = "Interim analysis, $t$, decision rule summary", booktabs = 
 
 The effect of SMS vaccine reminders on the primary endpoint will be investigated in the final analysis for the following subgroups: 
 
-- Children at each scheduled age at vaccination (2, 4, 6, 12, 18 months and 48 months) 
+- Scheduled age for vaccination (2, 4, 6, 12, 18 months and 48 months) 
 
 ## Missing data
 
@@ -804,10 +796,6 @@ meseffcfg <- meseff$cfg %>% mutate(
 ### All equally effective
 
 #### Average Effect Decisions
-
-Figure \@ref(fig:alleffdecavg) displays the decision times for whether the interventions are on average effective or harmful.
-Under the null scenario (Effect = 1.0), the average intervention effect has low probability of being declared harmful or effective on average.
-Under large effects there is high probability of declaring the average effect either beneficial or harmful.
 
 ```{r alleffdecavg, fig.cap="Decision times for average intervention effect.", fig.height=4}
 decavgat_f <- function(dat, datcfg) {
@@ -1038,12 +1026,6 @@ decbestat_p(decbestat)
 
 #### Arm Dropping
 
-
-The probability of dropping the control arm is kept below 25% under the null scenario.
-There is high probability of dropping the control arm early under most effect sizes, when all interventions are equally effective (Figure \@ref(fig:alleffdecdrp)).
-The chance of dropping effective intervention arms is low.
-
-
 ```{r alleffdecdrp, fig.height=7, fig.cap="Decision times for dropping each intervention arm."}
 decdrpat_f <- function(dat, datcfg) {
   null$res_dec1 %>% 
@@ -1224,10 +1206,6 @@ summpctr_p(summctr)
 
 
 #### Average Effect Decisions
-
-
-Figure \@ref(fig:oneeffdecavg) displays the decision times for whether the interventions are on average effective or harmful.
-There is low probability of deciding the average intervention effect is beneficial or harmful.
 
 
 ```{r oneeffdecavg, fig.cap="Decision times for average intervention effect."}

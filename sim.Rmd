@@ -222,7 +222,7 @@ In this example, arm 0 (control) is superior to all others by an amount 0.5 on t
 ```{r}
 set.seed(756102)
 ex <- run_a_noninf_trial_alt(
-  1, c(1.5, 1.15, rep(1,11)), 
+  1, c(1.75, 1.15, rep(1,11)), 
   kappa_act_1 = 0.01, kappa_sup_0 = 0.85, kappa_sup_1 = 0.75, 
   kappa_noninf_0 = 0.5, kappa_noninf_1 = 0.5, 
   kappa_nonsup_0 = 0.05, kappa_nonsup_1 = 0.05,
@@ -413,9 +413,9 @@ ggplot(pdat,
 In this example, arms 1 and 2 are superior to all others by an equal amount 0.5 on the log-odds scale. The trial stops for non-inferiority of two arms at teh 6th interim analysis.
 
 ```{r}
-set.seed(201938)
+set.seed(12059)
 ex <- run_a_noninf_trial_alt(
-  1, c(1, 1.5, 1.5, rep(1,10)), 
+  1, c(1, 1.5, 1.5, 1.5, rep(1,9)), 
   kappa_act_1 = 0.01, kappa_sup_0 = 0.85, kappa_sup_1 = 0.75, 
   kappa_noninf_0 = 0.5, kappa_noninf_1 = 0.5, 
   kappa_nonsup_0 = 0.05, kappa_nonsup_1 = 0.05,
@@ -440,7 +440,6 @@ p2 <- gather(as_tibble(ex$p_max), "Arm", "Prob(max)") %>%
             aes(colour = NULL)) +
   scale_colour_viridis_d(guide = 'none', option = "B") +
   scale_x_continuous(expand = c(0, 2)) +
-  xlim(0, 8) +
   ylim(0, 1) +
   geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
 
@@ -451,7 +450,6 @@ p3 <- gather(as_tibble(ex$p_sup_trt), "Arm", "Prob(sup all)") %>%
   geom_hline(yintercept = c(0.05), linetype = 2) +
   scale_colour_viridis_d(guide = 'none', option = "B") +
   scale_x_continuous(expand = c(0, 2)) +
-  xlim(0, 8) +
   ylim(0, 1) +
   geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
 
@@ -464,7 +462,6 @@ p4 <- tibble("Prob(best beats all inactive and control)" = ex$p_best_beat_inacti
   geom_line() +
   geom_hline(yintercept = c(0.5, 0.75), linetype = 2, colour = c("black", "red")) +
   scale_colour_manual(guide = FALSE, "", values = c("black", "red")) +
-  xlim(0, 8) +
   ylim(0, 1) +
   labs(y = "Prob(noninf)/Prob(sup)") +
   theme(legend.position = "bottom")
@@ -476,7 +473,6 @@ p5 <- gather(as_tibble(ex$p_beat_ctrl), "Arm", "Prob(beat ctrl)") %>%
   geom_hline(yintercept = c(0.05, 0.95), linetype = 2) +
   scale_colour_viridis_d(guide = 'none', option = "B") +
   scale_x_continuous(expand = c(0, 2)) +
-  xlim(0, 8) +
   ylim(0, 1) +
   geom_dl(aes(label = Arm), method = list(dl.trans(x = x + 0.1), "last.points", cex = 0.8))
 
