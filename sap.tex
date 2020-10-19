@@ -85,7 +85,7 @@
   
   \affil{\textsuperscript{1}University of Sydney, Health and Clinical Analytics, \textsuperscript{2}Telethon Kids Institute, Adaptive Health Intelligence}
 
-    \date{Date: 16 October 2020}
+    \date{Date: 20 October 2020}
 
 
 \usepackage{scrlayer}
@@ -142,7 +142,7 @@
     {\sectfont\Huge Statistical Analysis Plan\par}\vspace{3\baselineskip}
     {\huge AuTOMATIC: Adaptive Trial of MessAging to improve Immunisation Coverage\par}\vspace{3\baselineskip}
   \end{center}
-  {\large Date: 16 October 2020\par}\vspace{0.5\baselineskip}
+  {\large Date: 20 October 2020\par}\vspace{0.5\baselineskip}
   {\large Version: 1.0\par}\vspace{0.5\baselineskip}
   {\large ANZCTR Number: U1111-1189-6054\par}\vspace{0.5\baselineskip}
   {\large           James Totterdell\textsuperscript{1},
@@ -609,9 +609,9 @@ The priors on the \(\gamma\) terms will be set so as to enforce the relevant sum
 \[
 \begin{aligned}
 S_l &= \mathrm{I}_l - l^{-1}\mathrm{J}_l \\
-\gamma_a &\sim N\left(0, \frac{3}{2}S_4\right) \\
-\gamma_b &\sim N\left(0, \frac{4}{3}S_3\right) \\
-\gamma_{ab} &\sim N\left(0, 2\left[S_4\otimes S_3\right]\right).
+\gamma_a &\sim N\left(0, S_4\right) \\
+\gamma_b &\sim N\left(0, S_3\right) \\
+\gamma_{ab} &\sim N\left(0, S_4\otimes S_3\right).
 \end{aligned}
 \]
 The prior on other model coefficients will be

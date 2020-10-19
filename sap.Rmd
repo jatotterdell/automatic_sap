@@ -412,9 +412,9 @@ The priors on the $\gamma$ terms will be set so as to enforce the relevant sum-t
 $$
 \begin{aligned}
 S_l &= \mathrm{I}_l - l^{-1}\mathrm{J}_l \\
-\gamma_a &\sim N\left(0, \frac{3}{2}S_4\right) \\
-\gamma_b &\sim N\left(0, \frac{4}{3}S_3\right) \\
-\gamma_{ab} &\sim N\left(0, 2\left[S_4\otimes S_3\right]\right).
+\gamma_a &\sim N\left(0, S_4\right) \\
+\gamma_b &\sim N\left(0, S_3\right) \\
+\gamma_{ab} &\sim N\left(0, S_4\otimes S_3\right).
 \end{aligned}
 $$
 The prior on other model coefficients will be
